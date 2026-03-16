@@ -1,0 +1,37 @@
+# Weighted Multi-Target Load Testing Example
+# Distributes load according to specified weights (60/30/10)
+
+targets:
+  distribution:
+    strategy: weighted
+    weights: [0.6, 0.3, 0.1]
+  targets:
+    - id: "primary"
+      url: "https://primary.example.com/api/v1/data"
+      method: "POST"
+      headers:
+        Content-Type: "application/json"
+      body: '{"test": "data"}'
+
+    - id: "secondary"
+      url: "https://secondary.example.com/api/v1/data"
+      method: "POST"
+      headers:
+        Content-Type: "application/json"
+      body: '{"test": "data"}'
+
+    - id: "tertiary"
+      url: "https://tertiary.example.com/api/v1/data"
+      method: "POST"
+      headers:
+        Content-Type: "application/json"
+      body: '{"test": "data"}'
+
+pattern:
+  type: ratelimit
+  rate: 100
+  duration_secs: 300
+
+output:
+  file: "weighted-results.json"
+  console: true

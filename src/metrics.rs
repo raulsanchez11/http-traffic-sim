@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -9,6 +10,69 @@ pub struct RequestResult {
     pub status_code: Option<u16>,
     pub success: bool,
     pub error: Option<String>,
+    pub target_id: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ConnectionStats {
+    pub refused_count: Arc<AtomicUsize>,
+    pub timeout_count: Arc<AtomicUsize>,
+    pub reset_by_peer_count: Arc<AtomicUsize>,
+    pub tls_handshake_errors: Arc<AtomicUsize>,
+    pub dns_errors: Arc<AtomicUsize>,
+    pub other_errors: Arc<AtomicUsize>,
+}
+
+impl ConnectionStats {
+    pub fn new() -> Self {
+        Self {
+            refused_count: Arc::new(AtomicUsize::new(0)),
+            timeout_count: Arc::new(AtomicUsize::new(0)),
+            reset_by_peer_count: Arc::new(AtomicUsize::new(0)),
+            tls_handshake_errors: Arc::new(AtomicUsize::new(0)),
+            dns_errors: Arc::new(AtomicUsize::new(0)),
+            other_errors: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn categorize_and_increment(&self, error: &str) {
+        let error_lower = error.to_lowercase();
+
+        if error_lower.contains("connection refused") || error_lower.contains("econnrefused") {
+            self.refused_count.fetch_add(1, Ordering::Relaxed);
+        } else if error_lower.contains("timeout") || error_lower.contains("etimedout") {
+            self.timeout_count.fetch_add(1, Ordering::Relaxed);
+        } else if error_lower.contains("connection reset") || error_lower.contains("econnreset") {
+            self.reset_by_peer_count.fetch_add(1, Ordering::Relaxed);
+        } else if error_lower.contains("tls") || error_lower.contains("ssl") || error_lower.contains("certificate") {
+            self.tls_handshake_errors.fetch_add(1, Ordering::Relaxed);
+        } else if error_lower.contains("dns") || error_lower.contains("resolve") {
+            self.dns_errors.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.other_errors.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub fn get_snapshot(&self) -> ConnectionStatsSnapshot {
+        ConnectionStatsSnapshot {
+            refused_count: self.refused_count.load(Ordering::Relaxed),
+            timeout_count: self.timeout_count.load(Ordering::Relaxed),
+            reset_by_peer_count: self.reset_by_peer_count.load(Ordering::Relaxed),
+            tls_handshake_errors: self.tls_handshake_errors.load(Ordering::Relaxed),
+            dns_errors: self.dns_errors.load(Ordering::Relaxed),
+            other_errors: self.other_errors.load(Ordering::Relaxed),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConnectionStatsSnapshot {
+    pub refused_count: usize,
+    pub timeout_count: usize,
+    pub reset_by_peer_count: usize,
+    pub tls_handshake_errors: usize,
+    pub dns_errors: usize,
+    pub other_errors: usize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -58,6 +122,7 @@ struct MetricsInner {
     total_requests: usize,
     successful_requests: usize,
     failed_requests: usize,
+    connection_stats: ConnectionStats,
 }
 
 impl MetricsCollector {
@@ -71,6 +136,7 @@ impl MetricsCollector {
                 total_requests: 0,
                 successful_requests: 0,
                 failed_requests: 0,
+                connection_stats: ConnectionStats::new(),
             })),
         }
     }
@@ -95,8 +161,11 @@ impl MetricsCollector {
             inner.status_codes.add(code);
         }
 
-        // Record error
+        // Record error and categorize connection errors
         if let Some(error) = result.error {
+            if !result.success {
+                inner.connection_stats.categorize_and_increment(&error);
+            }
             inner.errors.add(error);
         }
     }
@@ -114,6 +183,7 @@ impl MetricsCollector {
             latencies_us: inner.latencies_us.clone(),
             status_codes: inner.status_codes.clone(),
             errors: inner.errors.clone(),
+            connection_stats: inner.connection_stats.get_snapshot(),
         }
     }
 
@@ -132,6 +202,72 @@ pub struct MetricsSnapshot {
     pub latencies_us: Vec<u64>,
     pub status_codes: StatusCodeDistribution,
     pub errors: ErrorDistribution,
+    pub connection_stats: ConnectionStatsSnapshot,
+}
+
+/// Per-target metrics tracker
+#[derive(Clone)]
+pub struct TargetMetrics {
+    pub target_id: String,
+    pub collector: MetricsCollector,
+}
+
+impl TargetMetrics {
+    pub fn new(target_id: String) -> Self {
+        Self {
+            target_id,
+            collector: MetricsCollector::new(),
+        }
+    }
+}
+
+/// Multi-target metrics aggregator
+#[derive(Clone)]
+pub struct MultiTargetMetrics {
+    targets: Arc<Mutex<HashMap<String, Arc<TargetMetrics>>>>,
+    global: MetricsCollector,
+}
+
+impl MultiTargetMetrics {
+    pub fn new() -> Self {
+        Self {
+            targets: Arc::new(Mutex::new(HashMap::new())),
+            global: MetricsCollector::new(),
+        }
+    }
+
+    pub fn record(&self, result: RequestResult) {
+        // Record to global metrics
+        self.global.record(result.clone());
+
+        // Record to per-target metrics
+        let mut targets = self.targets.lock().unwrap();
+        let target_metrics = targets
+            .entry(result.target_id.clone())
+            .or_insert_with(|| Arc::new(TargetMetrics::new(result.target_id.clone())));
+
+        target_metrics.collector.record(result);
+    }
+
+    pub fn get_global_snapshot(&self) -> MetricsSnapshot {
+        self.global.get_snapshot()
+    }
+
+    pub fn get_per_target_snapshots(&self) -> HashMap<String, MetricsSnapshot> {
+        let targets = self.targets.lock().unwrap();
+        targets
+            .iter()
+            .map(|(id, metrics)| (id.clone(), metrics.collector.get_snapshot()))
+            .collect()
+    }
+
+    pub fn reset_start_time(&self) {
+        self.global.reset_start_time();
+        let targets = self.targets.lock().unwrap();
+        for metrics in targets.values() {
+            metrics.collector.reset_start_time();
+        }
+    }
 }
 
 impl MetricsSnapshot {

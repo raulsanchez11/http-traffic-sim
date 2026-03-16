@@ -7,22 +7,41 @@ use tokio_util::sync::CancellationToken;
 
 use crate::client::HttpClient;
 use crate::config::TrafficPattern;
-use crate::metrics::MetricsCollector;
+use crate::metrics::{MetricsCollector, MultiTargetMetrics};
 
 pub struct PatternExecutor {
     client: HttpClient,
-    metrics: MetricsCollector,
+    metrics: MetricsMode,
     pattern: TrafficPattern,
+}
+
+#[derive(Clone)]
+enum MetricsMode {
+    Single(MetricsCollector),
+    Multi(MultiTargetMetrics),
 }
 
 impl PatternExecutor {
     pub fn new(client: HttpClient, metrics: MetricsCollector, pattern: TrafficPattern) -> Self {
         Self {
             client,
-            metrics,
+            metrics: MetricsMode::Single(metrics),
             pattern,
         }
     }
+
+    pub fn new_multi_target(
+        client: HttpClient,
+        metrics: MultiTargetMetrics,
+        pattern: TrafficPattern,
+    ) -> Self {
+        Self {
+            client,
+            metrics: MetricsMode::Multi(metrics),
+            pattern,
+        }
+    }
+
 
     pub async fn execute(&self, cancel_token: CancellationToken) -> Result<()> {
         match &self.pattern {
@@ -98,11 +117,17 @@ impl PatternExecutor {
 
             let permit = semaphore.clone().acquire_owned().await?;
             let client = self.client.clone();
-            let metrics = self.metrics.clone();
+            let metrics_mode = match &self.metrics {
+                MetricsMode::Single(m) => MetricsMode::Single(m.clone()),
+                MetricsMode::Multi(m) => MetricsMode::Multi(m.clone()),
+            };
 
             let handle = tokio::spawn(async move {
                 let result = client.execute().await;
-                metrics.record(result);
+                match metrics_mode {
+                    MetricsMode::Single(m) => m.record(result),
+                    MetricsMode::Multi(m) => m.record(result),
+                }
                 drop(permit);
             });
 
@@ -154,11 +179,17 @@ impl PatternExecutor {
             }
 
             let client = self.client.clone();
-            let metrics = self.metrics.clone();
+            let metrics_mode = match &self.metrics {
+                MetricsMode::Single(m) => MetricsMode::Single(m.clone()),
+                MetricsMode::Multi(m) => MetricsMode::Multi(m.clone()),
+            };
 
             tokio::spawn(async move {
                 let result = client.execute().await;
-                metrics.record(result);
+                match metrics_mode {
+                    MetricsMode::Single(m) => m.record(result),
+                    MetricsMode::Multi(m) => m.record(result),
+                }
             });
 
             request_count += 1;
@@ -253,11 +284,17 @@ impl PatternExecutor {
             let mut handles = Vec::new();
             for _ in 0..size {
                 let client = self.client.clone();
-                let metrics = self.metrics.clone();
+                let metrics_mode = match &self.metrics {
+                    MetricsMode::Single(m) => MetricsMode::Single(m.clone()),
+                    MetricsMode::Multi(m) => MetricsMode::Multi(m.clone()),
+                };
 
                 let handle = tokio::spawn(async move {
                     let result = client.execute().await;
-                    metrics.record(result);
+                    match metrics_mode {
+                        MetricsMode::Single(m) => m.record(result),
+                        MetricsMode::Multi(m) => m.record(result),
+                    }
                 });
 
                 handles.push(handle);
@@ -274,11 +311,4 @@ impl PatternExecutor {
         Ok(())
     }
 
-    fn clone_for_spawn(&self) -> Self {
-        Self {
-            client: self.client.clone(),
-            metrics: self.metrics.clone(),
-            pattern: self.pattern.clone(),
-        }
-    }
 }

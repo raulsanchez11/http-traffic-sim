@@ -1,0 +1,31 @@
+# Request Flood Stress Test Example
+# Tests extreme request rate handling
+
+target:
+  url: "https://test.mycompany.com/api/endpoint"
+  method: "POST"
+  headers:
+    Content-Type: "application/json"
+  body: '{"test": "payload"}'
+
+stress_pattern:
+  category: requestflood
+  target_rps: 10000
+  duration_secs: 120
+
+authorization:
+  confirmed: true
+  target_owner: "DevOps Team - Change Request #567"
+  authorization_notes: "API gateway stress testing"
+
+# Optional: Configure safety limits (omit for unlimited)
+safety_limits:
+  max_requests_per_second: 50000  # Enforce limit at 50k RPS
+
+client:
+  timeout_secs: 10
+  pool_max_idle_per_host: 2000
+
+output:
+  file: "request-flood-results.json"
+  console: true

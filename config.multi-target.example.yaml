@@ -1,0 +1,41 @@
+# Multi-Target Load Testing Example
+# This configuration tests multiple targets with round-robin distribution
+
+targets:
+  distribution:
+    strategy: roundrobin
+  targets:
+    - id: "api1"
+      url: "https://api1.example.com/health"
+      method: "GET"
+      headers:
+        Authorization: "Bearer token1"
+        User-Agent: "LoadTester/1.0"
+
+    - id: "api2"
+      url: "https://api2.example.com/health"
+      method: "GET"
+      headers:
+        Authorization: "Bearer token2"
+        User-Agent: "LoadTester/1.0"
+
+    - id: "api3"
+      url: "https://api3.example.com/health"
+      method: "GET"
+      headers:
+        Authorization: "Bearer token3"
+        User-Agent: "LoadTester/1.0"
+
+pattern:
+  type: fixed
+  concurrent: 50
+  duration_secs: 60
+
+client:
+  timeout_secs: 10
+  pool_max_idle_per_host: 128
+
+output:
+  file: "multi-target-results.json"
+  console: true
+  realtime_updates: true

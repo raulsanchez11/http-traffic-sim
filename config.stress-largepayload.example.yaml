@@ -1,0 +1,32 @@
+# Large Payload Stress Test Example
+# Tests handling of large request bodies
+
+target:
+  url: "https://test.mycompany.com/upload"
+  method: "POST"
+  headers:
+    Content-Type: "application/octet-stream"
+
+stress_pattern:
+  category: largepayload
+  size_mb: 50
+  concurrent: 10
+  duration_secs: 300
+
+authorization:
+  confirmed: true
+  target_owner: "Storage Team - Ticket #789"
+  authorization_notes: "Upload service capacity testing"
+
+# Optional: Configure safety limits
+safety_limits:
+  max_payload_size_mb: 100  # Limit to 100MB per request
+  max_concurrent_connections: 50
+
+client:
+  timeout_secs: 60
+  pool_max_idle_per_host: 50
+
+output:
+  file: "large-payload-results.json"
+  console: true

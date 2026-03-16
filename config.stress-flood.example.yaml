@@ -1,0 +1,34 @@
+# Connection Flood Stress Test Example
+# WARNING: Only use against infrastructure you own or have explicit permission to test
+
+target:
+  url: "https://test.mycompany.com/health"
+  method: "GET"
+  headers:
+    User-Agent: "StressTest/1.0"
+
+stress_pattern:
+  category: connectionflood
+  connections_per_second: 500
+  hold_time_ms: 100
+  duration_secs: 60
+
+authorization:
+  confirmed: true
+  target_owner: "Infrastructure Team - Ticket #12345"
+  authorization_notes: "Load balancer capacity testing for Q1 2024"
+
+# Optional: Configure safety limits (omit for unlimited)
+# safety_limits:
+#   max_connections_per_second: 1000
+#   max_requests_per_second: 100000
+#   max_payload_size_mb: 100
+#   max_concurrent_connections: 5000
+
+client:
+  timeout_secs: 5
+  pool_max_idle_per_host: 1000
+
+output:
+  file: "connection-flood-results.json"
+  console: true
