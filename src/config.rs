@@ -407,7 +407,7 @@ impl Config {
             anyhow::bail!("Target URL is required. Specify with --url, target.url, or targets section in config file.");
         }
 
-        Ok(Config {
+        let result = Config {
             target: config.target,
             targets: config.targets,
             pattern: config.pattern,
@@ -417,7 +417,12 @@ impl Config {
             client: config.client,
             output: config.output,
             verbose: args.verbose,
-        })
+        };
+
+        // Validate stress testing authorization and safety limits
+        result.validate_stress_authorization()?;
+
+        Ok(result)
     }
 
     fn load_file(path: &PathBuf) -> Result<ConfigFile> {
