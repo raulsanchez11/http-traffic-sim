@@ -1,0 +1,51 @@
+# Example configuration file for HTTP/HTTPS Traffic Simulator
+
+target:
+  url: "https://httpbin.org/get"
+  method: "GET"
+  headers:
+    User-Agent: "http-traffic-sim/0.1.0"
+    Accept: "application/json"
+  # Optional request body (for POST/PUT requests)
+  # body: '{"key": "value"}'
+
+# Choose one traffic pattern
+
+# Fixed Concurrency - maintain constant number of concurrent requests
+pattern:
+  type: fixed
+  concurrent: 50
+  duration_secs: 60
+  # OR specify total_requests instead of duration
+  # total_requests: 1000
+
+# Rate Limited - maintain specific requests per second
+# pattern:
+#   type: ratelimit
+#   rate: 100
+#   duration_secs: 30
+
+# Ramp-up - gradually increase load
+# pattern:
+#   type: ramp
+#   from: 10
+#   to: 100
+#   ramp_duration_secs: 60
+#   hold_duration_secs: 30  # Optional: hold at max for this duration
+
+# Burst - send bursts of requests at intervals
+# pattern:
+#   type: burst
+#   size: 100
+#   interval_secs: 10
+#   duration_secs: 60
+
+client:
+  timeout_secs: 30
+  pool_max_idle_per_host: 128
+  http2_prior_knowledge: false
+
+output:
+  file: "results.json"
+  console: true
+  realtime_updates: true
