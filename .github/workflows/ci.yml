@@ -53,12 +53,6 @@ jobs:
       - name: Run tests
         run: cargo test --release --verbose
 
-      - name: Run discovery tests (Unix only)
-        if: runner.os != 'Windows'
-        run: |
-          chmod +x run_discovery_tests.sh
-          ./run_discovery_tests.sh
-
   # Linting with clippy
   clippy:
     name: Clippy

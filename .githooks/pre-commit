@@ -1,0 +1,63 @@
+#!/bin/bash
+# Pre-commit hook for http-traffic-sim
+# Runs formatting, linting, and tests before allowing commit
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+echo ""
+
+# Check if cargo is available
+if ! command -v cargo &> /dev/null; then
+    echo "❌ Error: cargo not found. Please install Rust."
+    exit 1
+fi
+
+# 1. Check code formatting
+echo "📝 Checking code formatting..."
+if ! cargo fmt -- --check; then
+    echo ""
+    echo "❌ Code formatting check failed!"
+    echo "💡 Run 'cargo fmt' to fix formatting issues."
+    exit 1
+fi
+echo "✅ Code formatting OK"
+echo ""
+
+# 2. Run clippy
+echo "🔧 Running clippy..."
+if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    echo ""
+    echo "❌ Clippy check failed!"
+    echo "💡 Fix the issues above before committing."
+    exit 1
+fi
+echo "✅ Clippy OK"
+echo ""
+
+# 3. Build the project
+echo "🔨 Building project..."
+if ! cargo build --release --quiet; then
+    echo ""
+    echo "❌ Build failed!"
+    exit 1
+fi
+echo "✅ Build OK"
+echo ""
+
+# 4. Run tests
+echo "🧪 Running tests..."
+if ! cargo test --quiet; then
+    echo ""
+    echo "❌ Tests failed!"
+    echo "💡 Fix failing tests before committing."
+    exit 1
+fi
+echo "✅ All tests passed"
+echo ""
+
+# Success!
+echo "✨ All pre-commit checks passed! Proceeding with commit..."
+echo ""
+
+exit 0
