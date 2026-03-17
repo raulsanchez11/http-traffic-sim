@@ -3,6 +3,10 @@ name = "http-traffic-sim"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "http_traffic_sim"
+path = "src/lib.rs"
+
 [dependencies]
 # HTTP Client
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
@@ -30,3 +34,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures = "0.3"
 rand = "0.8"
 url = "2.5"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "discovery_bench"
+harness = false
