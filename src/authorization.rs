@@ -1,8 +1,104 @@
+//! Authorization validation for stress testing.
+//!
+//! This module ensures that stress testing patterns are only executed with
+//! proper authorization. It provides:
+//!
+//! - Authorization validation before stress tests
+//! - Safety limit enforcement
+//! - Prominent warning displays
+//! - 5-second countdown before execution
+//!
+//! # Purpose
+//!
+//! Stress testing can generate extreme load and potentially impact service
+//! availability. This module ensures users:
+//!
+//! - Explicitly confirm authorization via configuration
+//! - Are warned about legal and ethical implications
+//! - Have time to cancel before execution begins
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use http_traffic_sim::authorization::validate_and_warn;
+//! use http_traffic_sim::config::{StressPattern, AuthorizationConfig, SafetyLimits};
+//!
+//! # fn example() -> anyhow::Result<()> {
+//! let pattern = StressPattern::RequestFlood {
+//!     target_rps: 1000,
+//!     duration_secs: 60,
+//! };
+//!
+//! let auth = Some(AuthorizationConfig {
+//!     confirmed: true,
+//!     target_owner: Some("Security Team - Ticket #12345".to_string()),
+//!     authorization_notes: Some("Authorized load test".to_string()),
+//! });
+//!
+//! let limits = SafetyLimits::default();
+//!
+//! validate_and_warn(&pattern, &auth, &limits)?;
+//! # Ok(())
+//! # }
+//! ```
+
 use crate::config::{AuthorizationConfig, SafetyLimits, StressPattern};
 use anyhow::Result;
 use std::io::{self, Write};
 
-/// Validates authorization for stress testing and displays warnings
+/// Validates authorization for stress testing and displays warnings.
+///
+/// This function must be called before executing any stress testing pattern.
+/// It verifies that:
+///
+/// - Authorization configuration is present
+/// - Authorization is explicitly confirmed (`confirmed: true`)
+/// - Safety limits are configured and respected
+///
+/// After validation, displays a prominent warning with:
+/// - Legal notice about unauthorized testing
+/// - Pattern description and parameters
+/// - Authorization details (who authorized, notes)
+/// - Configured safety limits
+/// - 5-second countdown before execution
+///
+/// # Arguments
+///
+/// * `stress_pattern` - The stress testing pattern to be executed
+/// * `authorization` - Authorization configuration (must have `confirmed: true`)
+/// * `safety_limits` - Safety limits to enforce and display
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Authorization configuration is missing
+/// - Authorization is not confirmed (`confirmed: false` or missing)
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use http_traffic_sim::authorization::validate_and_warn;
+/// use http_traffic_sim::config::{StressPattern, AuthorizationConfig, SafetyLimits};
+///
+/// # fn example() -> anyhow::Result<()> {
+/// let pattern = StressPattern::RequestFlood {
+///     target_rps: 1000,
+///     duration_secs: 60,
+/// };
+///
+/// let auth = Some(AuthorizationConfig {
+///     confirmed: true,
+///     target_owner: Some("Security Team".to_string()),
+///     authorization_notes: Some("Approved load test".to_string()),
+/// });
+///
+/// let limits = SafetyLimits::default();
+///
+/// // Validates and displays warning with 5-second countdown
+/// validate_and_warn(&pattern, &auth, &limits)?;
+/// # Ok(())
+/// # }
+/// ```
 pub fn validate_and_warn(
     stress_pattern: &StressPattern,
     authorization: &Option<AuthorizationConfig>,

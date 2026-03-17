@@ -1,3 +1,41 @@
+//! Traffic pattern execution module.
+//!
+//! This module implements different load testing patterns:
+//!
+//! - **Fixed**: Constant concurrency level
+//! - **Rate-Limited**: Controlled requests per second
+//! - **Ramp-Up**: Gradually increase load from start to target
+//! - **Burst**: Periodic bursts of concurrent requests
+//!
+//! Each pattern supports duration limits, request count limits, and graceful cancellation.
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use http_traffic_sim::patterns::PatternExecutor;
+//! use http_traffic_sim::client::HttpClient;
+//! use http_traffic_sim::config::{TargetConfig, TrafficPattern};
+//! use http_traffic_sim::metrics::MetricsCollector;
+//! use tokio_util::sync::CancellationToken;
+//! use std::time::Duration;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! let target = TargetConfig::default();
+//! let client = HttpClient::new(target, Duration::from_secs(30), 128)?;
+//! let metrics = MetricsCollector::new();
+//! let pattern = TrafficPattern::Fixed {
+//!     concurrent: 50,
+//!     duration_secs: Some(60),
+//!     total_requests: None,
+//! };
+//!
+//! let executor = PatternExecutor::new(client, metrics, pattern);
+//! let cancel_token = CancellationToken::new();
+//! executor.execute(cancel_token).await?;
+//! # Ok(())
+//! # }
+//! ```
+
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,6 +47,40 @@ use crate::client::HttpClient;
 use crate::config::TrafficPattern;
 use crate::metrics::{MetricsCollector, MultiTargetMetrics};
 
+/// Executor for different traffic patterns.
+///
+/// Manages the execution of load testing patterns with:
+/// - Concurrency control
+/// - Rate limiting
+/// - Duration and request count limits
+/// - Graceful cancellation
+/// - Metrics collection
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use http_traffic_sim::patterns::PatternExecutor;
+/// use http_traffic_sim::client::HttpClient;
+/// use http_traffic_sim::config::{TargetConfig, TrafficPattern};
+/// use http_traffic_sim::metrics::MetricsCollector;
+/// use tokio_util::sync::CancellationToken;
+/// use std::time::Duration;
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// # let target = TargetConfig::default();
+/// let client = HttpClient::new(target, Duration::from_secs(30), 128)?;
+/// let metrics = MetricsCollector::new();
+/// let pattern = TrafficPattern::Fixed {
+///     concurrent: 50,
+///     duration_secs: Some(60),
+///     total_requests: None,
+/// };
+///
+/// let executor = PatternExecutor::new(client, metrics, pattern);
+/// executor.execute(CancellationToken::new()).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct PatternExecutor {
     client: HttpClient,
     metrics: MetricsMode,
@@ -22,6 +94,37 @@ enum MetricsMode {
 }
 
 impl PatternExecutor {
+    /// Creates a new pattern executor for single-target testing.
+    ///
+    /// # Arguments
+    ///
+    /// * `client` - HTTP client for executing requests
+    /// * `metrics` - Metrics collector for tracking results
+    /// * `pattern` - Traffic pattern to execute
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::patterns::PatternExecutor;
+    /// use http_traffic_sim::client::HttpClient;
+    /// use http_traffic_sim::config::{TargetConfig, TrafficPattern};
+    /// use http_traffic_sim::metrics::MetricsCollector;
+    /// use std::time::Duration;
+    ///
+    /// # fn example() -> anyhow::Result<()> {
+    /// # let target = TargetConfig::default();
+    /// let client = HttpClient::new(target, Duration::from_secs(30), 128)?;
+    /// let metrics = MetricsCollector::new();
+    /// let pattern = TrafficPattern::Fixed {
+    ///     concurrent: 50,
+    ///     duration_secs: Some(60),
+    ///     total_requests: None,
+    /// };
+    ///
+    /// let executor = PatternExecutor::new(client, metrics, pattern);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(client: HttpClient, metrics: MetricsCollector, pattern: TrafficPattern) -> Self {
         Self {
             client,
@@ -30,6 +133,40 @@ impl PatternExecutor {
         }
     }
 
+    /// Creates a new pattern executor for multi-target testing.
+    ///
+    /// # Arguments
+    ///
+    /// * `client` - HTTP client configured for multi-target distribution
+    /// * `metrics` - Multi-target metrics collector for per-target tracking
+    /// * `pattern` - Traffic pattern to execute
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::patterns::PatternExecutor;
+    /// use http_traffic_sim::client::HttpClient;
+    /// use http_traffic_sim::config::{TrafficPattern, LoadDistribution};
+    /// use http_traffic_sim::metrics::MultiTargetMetrics;
+    /// use http_traffic_sim::target_selector::TargetSelector;
+    /// use std::sync::Arc;
+    /// use std::time::Duration;
+    ///
+    /// # fn example() -> anyhow::Result<()> {
+    /// # let targets = vec![];
+    /// let selector = Arc::new(TargetSelector::new(targets, LoadDistribution::RoundRobin));
+    /// let client = HttpClient::new_multi_target(selector, Duration::from_secs(30), 128)?;
+    /// let metrics = MultiTargetMetrics::new();
+    /// let pattern = TrafficPattern::Fixed {
+    ///     concurrent: 50,
+    ///     duration_secs: Some(60),
+    ///     total_requests: None,
+    /// };
+    ///
+    /// let executor = PatternExecutor::new_multi_target(client, metrics, pattern);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new_multi_target(
         client: HttpClient,
         metrics: MultiTargetMetrics,
@@ -42,6 +179,37 @@ impl PatternExecutor {
         }
     }
 
+    /// Executes the configured traffic pattern.
+    ///
+    /// Routes to the appropriate pattern implementation based on the
+    /// configured pattern type. Supports graceful cancellation via the
+    /// provided cancellation token.
+    ///
+    /// # Arguments
+    ///
+    /// * `cancel_token` - Token for graceful cancellation
+    ///
+    /// # Pattern Behaviors
+    ///
+    /// - **Fixed**: Maintains constant concurrency level
+    /// - **Rate-Limited**: Controls requests per second with precise timing
+    /// - **Ramp-Up**: Gradually increases load in 10+ steps
+    /// - **Burst**: Sends periodic bursts at fixed intervals
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::patterns::PatternExecutor;
+    /// use tokio_util::sync::CancellationToken;
+    ///
+    /// # async fn example(executor: PatternExecutor) -> anyhow::Result<()> {
+    /// let cancel_token = CancellationToken::new();
+    ///
+    /// // Execute pattern until completion or cancellation
+    /// executor.execute(cancel_token.clone()).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn execute(&self, cancel_token: CancellationToken) -> Result<()> {
         match &self.pattern {
             TrafficPattern::Fixed {

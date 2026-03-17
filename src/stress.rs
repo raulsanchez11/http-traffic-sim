@@ -1,3 +1,64 @@
+//! Stress testing pattern execution.
+//!
+//! This module implements various stress testing patterns designed to test
+//! server resilience under extreme conditions. **Requires explicit authorization.**
+//!
+//! # Stress Testing Patterns
+//!
+//! - **Connection Flood**: Opens many connections rapidly and holds them
+//! - **Slowloris**: Sends partial HTTP headers slowly to exhaust connection pools
+//! - **Slow POST**: Sends request body data very slowly
+//! - **Request Flood**: Sends requests at extremely high rates
+//! - **Large Payload**: Sends very large payloads to test bandwidth handling
+//! - **Pipeline Abuse**: Abuses HTTP pipelining with many requests per connection
+//! - **Slow Read**: Reads response data very slowly to tie up server resources
+//!
+//! # Authorization Required
+//!
+//! All stress testing patterns require:
+//! - Explicit authorization configuration (`authorization.confirmed: true`)
+//! - Authorization details (owner, notes)
+//! - Safety limits (optional but recommended)
+//!
+//! See the `authorization` module for validation details.
+//!
+//! # Legal and Ethical Considerations
+//!
+//! **WARNING**: Stress testing can:
+//! - Impact service availability
+//! - Trigger security alerts
+//! - Violate terms of service
+//! - Be illegal without authorization
+//!
+//! Only use against systems you own or have explicit written permission to test.
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use http_traffic_sim::stress::StressExecutor;
+//! use http_traffic_sim::client::HttpClient;
+//! use http_traffic_sim::config::{TargetConfig, StressPattern};
+//! use http_traffic_sim::metrics::MetricsCollector;
+//! use tokio_util::sync::CancellationToken;
+//! use std::time::Duration;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! let target = TargetConfig::default();
+//! let client = HttpClient::new(target, Duration::from_secs(30), 128)?;
+//! let metrics = MetricsCollector::new();
+//!
+//! let pattern = StressPattern::RequestFlood {
+//!     target_rps: 1000,
+//!     duration_secs: 60,
+//! };
+//!
+//! // IMPORTANT: Requires authorization validation first!
+//! let executor = StressExecutor::new(client, metrics, pattern);
+//! executor.execute(CancellationToken::new()).await?;
+//! # Ok(())
+//! # }
+//! ```
+
 use anyhow::Result;
 use std::time::Duration;
 use tokio::time::{interval, sleep, Instant};
@@ -7,6 +68,52 @@ use crate::client::HttpClient;
 use crate::config::StressPattern;
 use crate::metrics::MetricsCollector;
 
+/// Executor for stress testing patterns.
+///
+/// Implements various aggressive load patterns designed to test server
+/// resilience and identify breaking points. **Requires authorization.**
+///
+/// # Patterns Supported
+///
+/// - Connection flood: Rapid connection opening with hold
+/// - Slowloris: Partial header attacks
+/// - Slow POST: Slow request body transmission
+/// - Request flood: High-rate request generation
+/// - Large payload: Bandwidth exhaustion testing
+/// - Pipeline abuse: HTTP pipelining exploitation
+/// - Slow read: Slow response consumption
+///
+/// # Safety
+///
+/// All patterns require authorization validation via the `authorization` module
+/// before execution. See `authorization::validate_and_warn()`.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use http_traffic_sim::stress::StressExecutor;
+/// use http_traffic_sim::client::HttpClient;
+/// use http_traffic_sim::config::{TargetConfig, StressPattern};
+/// use http_traffic_sim::metrics::MetricsCollector;
+/// use tokio_util::sync::CancellationToken;
+/// use std::time::Duration;
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// # let target = TargetConfig::default();
+/// let client = HttpClient::new(target, Duration::from_secs(30), 128)?;
+/// let metrics = MetricsCollector::new();
+///
+/// let pattern = StressPattern::ConnectionFlood {
+///     connections_per_second: 100,
+///     hold_time_ms: 5000,
+///     duration_secs: 60,
+/// };
+///
+/// let executor = StressExecutor::new(client, metrics, pattern);
+/// executor.execute(CancellationToken::new()).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct StressExecutor {
     client: HttpClient,
     metrics: MetricsCollector,
@@ -14,6 +121,42 @@ pub struct StressExecutor {
 }
 
 impl StressExecutor {
+    /// Creates a new stress testing executor.
+    ///
+    /// # Arguments
+    ///
+    /// * `client` - HTTP client for executing stress patterns
+    /// * `metrics` - Metrics collector for tracking results
+    /// * `pattern` - Stress testing pattern to execute
+    ///
+    /// # Note
+    ///
+    /// This does NOT validate authorization. You must call
+    /// `authorization::validate_and_warn()` before executing.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::stress::StressExecutor;
+    /// use http_traffic_sim::client::HttpClient;
+    /// use http_traffic_sim::config::{TargetConfig, StressPattern};
+    /// use http_traffic_sim::metrics::MetricsCollector;
+    /// use std::time::Duration;
+    ///
+    /// # fn example() -> anyhow::Result<()> {
+    /// # let target = TargetConfig::default();
+    /// let client = HttpClient::new(target, Duration::from_secs(30), 128)?;
+    /// let metrics = MetricsCollector::new();
+    ///
+    /// let pattern = StressPattern::RequestFlood {
+    ///     target_rps: 1000,
+    ///     duration_secs: 60,
+    /// };
+    ///
+    /// let executor = StressExecutor::new(client, metrics, pattern);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(client: HttpClient, metrics: MetricsCollector, pattern: StressPattern) -> Self {
         Self {
             client,
@@ -22,6 +165,43 @@ impl StressExecutor {
         }
     }
 
+    /// Executes the configured stress testing pattern.
+    ///
+    /// Routes to the appropriate stress pattern implementation based on
+    /// the configured pattern type. Supports graceful cancellation.
+    ///
+    /// # Arguments
+    ///
+    /// * `cancel_token` - Token for graceful cancellation
+    ///
+    /// # Behavior
+    ///
+    /// Each pattern implements a specific stress testing technique:
+    /// - Manages concurrent connections/requests
+    /// - Enforces pattern-specific timing (rates, delays, holds)
+    /// - Collects metrics for analysis
+    /// - Responds to cancellation signals
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the pattern execution encounters critical failures.
+    /// Most individual request failures are recorded in metrics rather than
+    /// causing execution to stop.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::stress::StressExecutor;
+    /// use tokio_util::sync::CancellationToken;
+    ///
+    /// # async fn example(executor: StressExecutor) -> anyhow::Result<()> {
+    /// let cancel_token = CancellationToken::new();
+    ///
+    /// // Execute stress pattern
+    /// executor.execute(cancel_token.clone()).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn execute(&self, cancel_token: CancellationToken) -> Result<()> {
         match &self.pattern {
             StressPattern::ConnectionFlood {

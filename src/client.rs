@@ -1,3 +1,35 @@
+//! HTTP client module for executing requests and stress testing patterns.
+//!
+//! This module provides HTTP/HTTPS client functionality with support for:
+//!
+//! - Single-target and multi-target load testing
+//! - Standard HTTP request execution with metrics
+//! - Connection pooling and keep-alive
+//! - Stress testing patterns (slowloris, slow read, connection hold)
+//! - Error categorization and detailed reporting
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use http_traffic_sim::client::HttpClient;
+//! use http_traffic_sim::config::TargetConfig;
+//! use std::time::Duration;
+//!
+//! # async fn example() -> anyhow::Result<()> {
+//! // Create a single-target client
+//! let target = TargetConfig::default();
+//! let client = HttpClient::new(
+//!     target,
+//!     Duration::from_secs(30),
+//!     128
+//! )?;
+//!
+//! // Execute a request
+//! let result = client.execute().await;
+//! # Ok(())
+//! # }
+//! ```
+
 use anyhow::Result;
 use reqwest::{Client, Method, Request};
 use std::sync::Arc;
@@ -9,6 +41,39 @@ use crate::config::TargetConfig;
 use crate::metrics::RequestResult;
 use crate::target_selector::TargetSelector;
 
+/// HTTP client for executing load tests and stress tests.
+///
+/// The client supports both single-target and multi-target modes,
+/// connection pooling, and various stress testing patterns.
+///
+/// # Features
+///
+/// - Connection pooling with configurable limits
+/// - TCP keep-alive for long-running tests
+/// - Multi-target load distribution
+/// - Stress testing capabilities (slowloris, slow read, etc.)
+/// - Detailed metrics collection
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use http_traffic_sim::client::HttpClient;
+/// use http_traffic_sim::config::TargetConfig;
+/// use std::time::Duration;
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// let target = TargetConfig::default();
+/// let client = HttpClient::new(
+///     target,
+///     Duration::from_secs(30),
+///     128
+/// )?;
+///
+/// let result = client.execute().await;
+/// println!("Status: {:?}", result.status_code);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone)]
 pub struct HttpClient {
     client: Client,
@@ -22,6 +87,31 @@ enum ClientMode {
 }
 
 impl HttpClient {
+    /// Creates a new HTTP client for single-target testing.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - Target configuration (URL, method, headers, body)
+    /// * `timeout` - Request timeout duration
+    /// * `pool_max_idle` - Maximum idle connections per host in pool
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::client::HttpClient;
+    /// use http_traffic_sim::config::TargetConfig;
+    /// use std::time::Duration;
+    ///
+    /// # fn example() -> anyhow::Result<()> {
+    /// let target = TargetConfig::default();
+    /// let client = HttpClient::new(
+    ///     target,
+    ///     Duration::from_secs(30),
+    ///     128
+    /// )?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(target: TargetConfig, timeout: Duration, pool_max_idle: usize) -> Result<Self> {
         let client = Client::builder()
             .timeout(timeout)
@@ -37,6 +127,37 @@ impl HttpClient {
         })
     }
 
+    /// Creates a new HTTP client for multi-target testing.
+    ///
+    /// Uses a target selector to distribute load across multiple targets
+    /// according to the configured distribution strategy.
+    ///
+    /// # Arguments
+    ///
+    /// * `selector` - Target selector for load distribution
+    /// * `timeout` - Request timeout duration
+    /// * `pool_max_idle` - Maximum idle connections per host in pool
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::client::HttpClient;
+    /// use http_traffic_sim::target_selector::TargetSelector;
+    /// use std::sync::Arc;
+    /// use std::time::Duration;
+    ///
+    /// # fn example() -> anyhow::Result<()> {
+    /// # let targets = vec![];
+    /// # let distribution = http_traffic_sim::config::LoadDistribution::RoundRobin;
+    /// let selector = Arc::new(TargetSelector::new(targets, distribution));
+    /// let client = HttpClient::new_multi_target(
+    ///     selector,
+    ///     Duration::from_secs(30),
+    ///     128
+    /// )?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new_multi_target(
         selector: Arc<TargetSelector>,
         timeout: Duration,
@@ -54,6 +175,43 @@ impl HttpClient {
         })
     }
 
+    /// Executes a single HTTP request and returns timing metrics.
+    ///
+    /// This is the main method for standard load testing. It:
+    /// - Selects a target (single or from multi-target pool)
+    /// - Builds the HTTP request with method, headers, and body
+    /// - Executes the request and measures response time
+    /// - Categorizes errors for detailed reporting
+    ///
+    /// # Returns
+    ///
+    /// Returns a `RequestResult` containing:
+    /// - Duration of the request
+    /// - HTTP status code (if successful)
+    /// - Success/failure indication
+    /// - Error message (if failed)
+    /// - Target ID for multi-target tracking
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::client::HttpClient;
+    /// use http_traffic_sim::config::TargetConfig;
+    /// use std::time::Duration;
+    ///
+    /// # async fn example() -> anyhow::Result<()> {
+    /// # let target = TargetConfig::default();
+    /// let client = HttpClient::new(target, Duration::from_secs(30), 128)?;
+    /// let result = client.execute().await;
+    ///
+    /// if result.success {
+    ///     println!("Request succeeded in {:?}", result.duration);
+    /// } else {
+    ///     println!("Request failed: {:?}", result.error);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn execute(&self) -> RequestResult {
         let start = Instant::now();
 
@@ -143,7 +301,22 @@ impl HttpClient {
         }
     }
 
-    /// Execute request and hold the connection for a specified duration (for connection flood)
+    /// Executes a request and holds the connection open for a specified duration.
+    ///
+    /// Used for connection flood stress testing patterns. Opens a connection,
+    /// makes a request, then holds the connection open to consume server resources.
+    ///
+    /// # Arguments
+    ///
+    /// * `hold_duration` - How long to keep the connection open after the request
+    ///
+    /// # Returns
+    ///
+    /// Returns the request result from the initial execution.
+    ///
+    /// # Note
+    ///
+    /// This is a stress testing feature and requires proper authorization.
     pub async fn execute_and_hold(&self, hold_duration: Duration) -> RequestResult {
         let result = self.execute().await;
 
@@ -153,7 +326,27 @@ impl HttpClient {
         result
     }
 
-    /// Open a raw TCP connection and send partial HTTP request (for slowloris)
+    /// Opens a raw TCP connection and sends partial HTTP headers (slowloris attack).
+    ///
+    /// Used for slowloris stress testing patterns. Opens a TCP connection and sends
+    /// incomplete HTTP headers, holding the connection open without completing the request.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - Target URL to connect to
+    /// * `partial_headers` - Incomplete HTTP headers to send
+    ///
+    /// # Behavior
+    ///
+    /// - Parses URL to extract host and port
+    /// - Opens raw TCP connection
+    /// - Sends partial headers without completing request
+    /// - Holds connection open for 5 minutes
+    ///
+    /// # Note
+    ///
+    /// This is a stress testing feature and requires proper authorization.
+    /// Only use against systems you own or have explicit permission to test.
     pub async fn send_partial_request(&self, url: &str, partial_headers: &str) -> Result<()> {
         // Parse URL to extract host and port
         let parsed_url = url::Url::parse(url)?;
@@ -182,7 +375,25 @@ impl HttpClient {
         Ok(())
     }
 
-    /// Execute request with slow read (for slow read attack)
+    /// Executes a request and reads the response very slowly (slow read attack).
+    ///
+    /// Used for slow read stress testing patterns. Makes a request and then
+    /// deliberately reads the response data very slowly to tie up server resources.
+    ///
+    /// # Arguments
+    ///
+    /// * `_read_rate_bps` - Target read rate in bytes per second (currently unused)
+    ///
+    /// # Behavior
+    ///
+    /// - Executes HTTP request
+    /// - Reads response chunks with 100ms delays between reads
+    /// - Holds connection open while slowly consuming response
+    ///
+    /// # Note
+    ///
+    /// This is a stress testing feature and requires proper authorization.
+    /// Only use against systems you own or have explicit permission to test.
     pub async fn slow_read(&self, _read_rate_bps: usize) -> Result<()> {
         let target = match &self.mode {
             ClientMode::SingleTarget { target } => target.clone(),

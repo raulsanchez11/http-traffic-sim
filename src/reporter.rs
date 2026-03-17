@@ -1,3 +1,34 @@
+//! Results reporting and output formatting.
+//!
+//! This module handles displaying and exporting load test results:
+//!
+//! - Real-time progress updates during test execution
+//! - Comprehensive final summary with statistics
+//! - JSON export for further analysis
+//! - Discovery results export
+//!
+//! # Features
+//!
+//! - Real-time updates with terminal control sequences
+//! - Formatted statistics with percentiles
+//! - Status code and error distribution
+//! - JSON export for automated processing
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use http_traffic_sim::reporter::Reporter;
+//! use http_traffic_sim::stats::Statistics;
+//!
+//! # fn example(stats: Statistics) -> anyhow::Result<()> {
+//! let reporter = Reporter::new(true); // Enable real-time updates
+//!
+//! // Show final summary
+//! reporter.show_final_summary(&stats);
+//! # Ok(())
+//! # }
+//! ```
+
 use anyhow::Result;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -5,12 +36,52 @@ use std::path::PathBuf;
 use crate::discovery::DiscoveryResult;
 use crate::stats::Statistics;
 
+/// Reporter for displaying and exporting load test results.
+///
+/// Handles both real-time progress updates and final result summaries.
+/// Can export results to JSON for further analysis.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use http_traffic_sim::reporter::Reporter;
+/// use http_traffic_sim::stats::Statistics;
+///
+/// # fn example(stats: Statistics) -> anyhow::Result<()> {
+/// // Create reporter with real-time updates
+/// let mut reporter = Reporter::new(true);
+///
+/// // During test execution
+/// // reporter.show_realtime_update(&stats);
+///
+/// // After test completion
+/// reporter.show_final_summary(&stats);
+/// # Ok(())
+/// # }
+/// ```
 pub struct Reporter {
     show_realtime: bool,
     last_line_count: usize,
 }
 
 impl Reporter {
+    /// Creates a new reporter instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `show_realtime` - Whether to display real-time progress updates
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use http_traffic_sim::reporter::Reporter;
+    ///
+    /// // With real-time updates
+    /// let reporter = Reporter::new(true);
+    ///
+    /// // Without real-time updates
+    /// let reporter = Reporter::new(false);
+    /// ```
     pub fn new(show_realtime: bool) -> Self {
         Self {
             show_realtime,
@@ -18,6 +89,36 @@ impl Reporter {
         }
     }
 
+    /// Displays a real-time progress update.
+    ///
+    /// Updates the terminal in-place by clearing previous output and
+    /// displaying current statistics. Only shows updates if real-time
+    /// mode is enabled.
+    ///
+    /// # Arguments
+    ///
+    /// * `stats` - Current statistics snapshot
+    ///
+    /// # Output Format
+    ///
+    /// Shows:
+    /// - Elapsed time, total requests, RPS, success rate
+    /// - Latency percentiles (P50, P90, P99)
+    /// - Failed request count
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::reporter::Reporter;
+    /// use http_traffic_sim::stats::Statistics;
+    ///
+    /// # fn example(stats: Statistics) {
+    /// let mut reporter = Reporter::new(true);
+    ///
+    /// // Call periodically during test
+    /// reporter.show_realtime_update(&stats);
+    /// # }
+    /// ```
     pub fn show_realtime_update(&mut self, stats: &Statistics) {
         if !self.show_realtime {
             return;
@@ -53,6 +154,33 @@ impl Reporter {
         )
     }
 
+    /// Displays a comprehensive final summary of test results.
+    ///
+    /// Shows complete statistics including:
+    /// - Total requests, success/failure counts and rates
+    /// - Requests per second (throughput)
+    /// - Latency statistics (min, max, mean, stddev)
+    /// - Latency percentiles (P50, P90, P95, P99, P99.9)
+    /// - Status code distribution
+    /// - Error distribution (top 10 errors)
+    ///
+    /// # Arguments
+    ///
+    /// * `stats` - Final statistics from completed test
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::reporter::Reporter;
+    /// use http_traffic_sim::stats::Statistics;
+    ///
+    /// # fn example(stats: Statistics) {
+    /// let reporter = Reporter::new(false);
+    ///
+    /// // Display final results
+    /// reporter.show_final_summary(&stats);
+    /// # }
+    /// ```
     pub fn show_final_summary(&self, stats: &Statistics) {
         // Clear realtime updates
         if self.show_realtime && self.last_line_count > 0 {
@@ -125,6 +253,34 @@ impl Reporter {
         println!("\n{}\n", "=".repeat(80));
     }
 
+    /// Exports test statistics to a JSON file.
+    ///
+    /// Serializes all statistics to pretty-printed JSON format for:
+    /// - Further analysis with external tools
+    /// - Automated CI/CD integration
+    /// - Historical comparison
+    /// - Report generation
+    ///
+    /// # Arguments
+    ///
+    /// * `stats` - Statistics to export
+    /// * `path` - File path for JSON output
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::reporter::Reporter;
+    /// use http_traffic_sim::stats::Statistics;
+    /// use std::path::PathBuf;
+    ///
+    /// # fn example(stats: Statistics) -> anyhow::Result<()> {
+    /// let reporter = Reporter::new(false);
+    /// let path = PathBuf::from("results.json");
+    ///
+    /// reporter.export_json(&stats, &path)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn export_json(&self, stats: &Statistics, path: &PathBuf) -> Result<()> {
         let json = serde_json::to_string_pretty(stats)?;
         std::fs::write(path, json)?;
@@ -132,6 +288,34 @@ impl Reporter {
         Ok(())
     }
 
+    /// Exports port discovery results to a JSON file.
+    ///
+    /// Serializes discovery results including:
+    /// - Discovered ports with status and response times
+    /// - Failed ports with error messages
+    /// - Service type detection results (HTTP/HTTPS)
+    /// - Discovery duration per target
+    ///
+    /// # Arguments
+    ///
+    /// * `results` - Discovery results to export
+    /// * `path` - File path for JSON output
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use http_traffic_sim::reporter::Reporter;
+    /// use http_traffic_sim::discovery::DiscoveryResult;
+    /// use std::path::PathBuf;
+    ///
+    /// # fn example(results: Vec<DiscoveryResult>) -> anyhow::Result<()> {
+    /// let reporter = Reporter::new(false);
+    /// let path = PathBuf::from("discovery.json");
+    ///
+    /// reporter.export_discovery_results(&results, &path)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[allow(dead_code)]
     pub fn export_discovery_results(
         &self,
