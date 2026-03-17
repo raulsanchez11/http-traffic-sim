@@ -1,3 +1,34 @@
+//! Port discovery module for validating connectivity and discovering services.
+//!
+//! This module provides functionality to discover and validate ports before
+//! running load tests. It supports:
+//!
+//! - TCP connectivity validation
+//! - HTTP/HTTPS service detection
+//! - Port range scanning
+//! - Concurrent multi-target discovery
+//! - Configurable failure handling
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use http_traffic_sim::discovery::{
+//!     PortDiscoveryConfig, DiscoveryMode, PortSpec, FailureAction
+//! };
+//!
+//! // Create a discovery configuration
+//! let config = PortDiscoveryConfig {
+//!     enabled: true,
+//!     mode: DiscoveryMode::Validate,
+//!     ports: PortSpec::Single(443),
+//!     timeout_ms: 2000,
+//!     retries: 2,
+//!     on_failure: FailureAction::Fail,
+//!     detect_service: true,
+//!     validate_http: true,
+//! };
+//! ```
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::net::ToSocketAddrs;
@@ -6,29 +37,59 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-/// Per-target port discovery configuration
+/// Configuration for port discovery on a target.
+///
+/// Port discovery validates connectivity and discovers available services before
+/// running load tests. This helps catch configuration errors early and enables
+/// automatic service detection.
+///
+/// # Examples
+///
+/// ```
+/// use http_traffic_sim::discovery::{PortDiscoveryConfig, DiscoveryMode, PortSpec, FailureAction};
+///
+/// // Validate a specific port
+/// let config = PortDiscoveryConfig {
+///     enabled: true,
+///     mode: DiscoveryMode::Validate,
+///     ports: PortSpec::Single(443),
+///     timeout_ms: 2000,
+///     retries: 2,
+///     on_failure: FailureAction::Fail,
+///     detect_service: true,
+///     validate_http: true,
+/// };
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortDiscoveryConfig {
+    /// Enable port discovery for this target
     #[serde(default)]
     pub enabled: bool,
 
+    /// Discovery mode: validate, scan, or both
     #[serde(default)]
     pub mode: DiscoveryMode,
 
+    /// Port specification: single port, list, or range
     pub ports: PortSpec,
 
+    /// Timeout per port check in milliseconds (default: 2000)
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
 
+    /// Number of retry attempts for failed checks (default: 2)
     #[serde(default = "default_retries")]
     pub retries: u8,
 
+    /// Action to take on discovery failure
     #[serde(default)]
     pub on_failure: FailureAction,
 
+    /// Enable HTTP/HTTPS service type detection (default: true)
     #[serde(default = "default_true")]
     pub detect_service: bool,
 
+    /// Validate HTTP responses during detection (default: true)
     #[serde(default = "default_true")]
     pub validate_http: bool,
 }
@@ -60,23 +121,55 @@ fn default_true() -> bool {
     true
 }
 
+/// Port discovery mode.
+///
+/// Determines how ports are discovered for a target.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
 pub enum DiscoveryMode {
+    /// Only validate explicitly specified ports
     #[default]
-    Validate, // Only validate explicit ports
-    Scan,     // Scan port ranges
-    Both,     // Validate + scan
+    Validate,
+    /// Scan port ranges to discover available services
+    Scan,
+    /// Both validate explicit ports and scan ranges
+    Both,
 }
 
 
+/// Port specification for discovery.
+///
+/// Specifies which ports to check during discovery.
+///
+/// # Examples
+///
+/// ```
+/// use http_traffic_sim::discovery::PortSpec;
+///
+/// // Single port
+/// let single = PortSpec::Single(8080);
+///
+/// // Multiple ports
+/// let list = PortSpec::List(vec![80, 443, 8080]);
+///
+/// // Port range
+/// let range = PortSpec::Range { start: 8000, end: 9000 };
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum PortSpec {
+    /// Single port to check
     Single(u16),
+    /// List of specific ports
     List(Vec<u16>),
-    Range { start: u16, end: u16 },
+    /// Range of ports (inclusive)
+    Range {
+        /// Starting port (inclusive)
+        start: u16,
+        /// Ending port (inclusive)
+        end: u16,
+    },
 }
 
 impl PortSpec {
@@ -89,55 +182,89 @@ impl PortSpec {
     }
 }
 
+/// Action to take when port discovery fails.
+///
+/// Determines how the load tester should proceed when discovery
+/// encounters unreachable ports or services.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
 pub enum FailureAction {
+    /// Stop execution with an error (default)
     #[default]
-    Fail, // Stop execution with error
-    Skip, // Continue with reachable targets only
-    Warn, // Log warning but continue with all
+    Fail,
+    /// Continue with only reachable targets
+    Skip,
+    /// Log warning but continue with all targets
+    Warn,
 }
 
 
-/// Discovery results for a target
+/// Results from port discovery for a single target.
+///
+/// Contains information about which ports were successfully discovered,
+/// which failed, and timing information.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiscoveryResult {
+    /// Target identifier
     pub target_id: String,
+    /// Target hostname
     pub host: String,
+    /// Successfully discovered ports with their information
     pub discovered_ports: Vec<PortInfo>,
+    /// Ports that failed discovery with error messages
     pub failed_ports: Vec<PortFailure>,
+    /// Total duration of the discovery process
     pub duration: Duration,
 }
 
+/// Information about a discovered port.
+///
+/// Contains the port number, its status, detected service type,
+/// and response time from the connectivity check.
 #[derive(Debug, Clone, Serialize)]
 pub struct PortInfo {
+    /// Port number
     pub port: u16,
+    /// Port status (Open, Closed, or Filtered)
     pub status: PortStatus,
+    /// Detected service type (HTTP, HTTPS, or Unknown)
     pub service_type: Option<ServiceType>,
+    /// Response time in milliseconds
     pub response_time_ms: f64,
 }
 
+/// Status of a port during discovery.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum PortStatus {
+    /// Port is open and accepting connections
     Open,
+    /// Port is closed or refusing connections
     Closed,
+    /// Port is filtered (no response, possibly firewall)
     #[allow(dead_code)]
     Filtered,
 }
 
+/// Type of service detected on a port.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ServiceType {
+    /// HTTP service detected
     Http,
+    /// HTTPS service detected
     Https,
+    /// Service type could not be determined
     Unknown,
 }
 
+/// Information about a port that failed discovery.
 #[derive(Debug, Clone, Serialize)]
 pub struct PortFailure {
+    /// Port number that failed
     pub port: u16,
+    /// Error message describing the failure
     pub error: String,
 }
 

@@ -1,3 +1,23 @@
+//! Configuration module for HTTP traffic simulator.
+//!
+//! This module handles configuration loading from YAML/TOML files and CLI arguments.
+//! It supports:
+//!
+//! - Single-target and multi-target load testing
+//! - Multiple traffic patterns (fixed, rate-limited, ramp-up, burst)
+//! - Stress testing patterns with authorization
+//! - Port discovery configuration
+//! - Safety limits and validation
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use http_traffic_sim::config::Config;
+//!
+//! // Load configuration
+//! let config = Config::load().unwrap();
+//! ```
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
