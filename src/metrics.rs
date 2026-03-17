@@ -37,20 +37,36 @@ impl ConnectionStats {
     }
 
     pub fn categorize_and_increment(&self, error: &str) {
-        let error_lower = error.to_lowercase();
+        // Avoid allocation by using case-insensitive contains
+        let error_lower = error.as_bytes();
 
-        if error_lower.contains("connection refused") || error_lower.contains("econnrefused") {
+        // Helper to check if bytes contain substring (case-insensitive)
+        fn contains_ignore_case(haystack: &[u8], needle: &str) -> bool {
+            haystack
+                .windows(needle.len())
+                .any(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
+        }
+
+        if contains_ignore_case(error_lower, "connection refused")
+            || contains_ignore_case(error_lower, "econnrefused")
+        {
             self.refused_count.fetch_add(1, Ordering::Relaxed);
-        } else if error_lower.contains("timeout") || error_lower.contains("etimedout") {
+        } else if contains_ignore_case(error_lower, "timeout")
+            || contains_ignore_case(error_lower, "etimedout")
+        {
             self.timeout_count.fetch_add(1, Ordering::Relaxed);
-        } else if error_lower.contains("connection reset") || error_lower.contains("econnreset") {
+        } else if contains_ignore_case(error_lower, "connection reset")
+            || contains_ignore_case(error_lower, "econnreset")
+        {
             self.reset_by_peer_count.fetch_add(1, Ordering::Relaxed);
-        } else if error_lower.contains("tls")
-            || error_lower.contains("ssl")
-            || error_lower.contains("certificate")
+        } else if contains_ignore_case(error_lower, "tls")
+            || contains_ignore_case(error_lower, "ssl")
+            || contains_ignore_case(error_lower, "certificate")
         {
             self.tls_handshake_errors.fetch_add(1, Ordering::Relaxed);
-        } else if error_lower.contains("dns") || error_lower.contains("resolve") {
+        } else if contains_ignore_case(error_lower, "dns")
+            || contains_ignore_case(error_lower, "resolve")
+        {
             self.dns_errors.fetch_add(1, Ordering::Relaxed);
         } else {
             self.other_errors.fetch_add(1, Ordering::Relaxed);
@@ -79,9 +95,17 @@ pub struct ConnectionStatsSnapshot {
     pub other_errors: usize,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct StatusCodeDistribution {
     pub counts: HashMap<u16, usize>,
+}
+
+impl Default for StatusCodeDistribution {
+    fn default() -> Self {
+        Self {
+            counts: HashMap::with_capacity(10), // Pre-allocate for common status codes
+        }
+    }
 }
 
 impl StatusCodeDistribution {
@@ -97,9 +121,17 @@ impl StatusCodeDistribution {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ErrorDistribution {
     pub counts: HashMap<String, usize>,
+}
+
+impl Default for ErrorDistribution {
+    fn default() -> Self {
+        Self {
+            counts: HashMap::with_capacity(20), // Pre-allocate for error types
+        }
+    }
 }
 
 impl ErrorDistribution {
@@ -136,7 +168,7 @@ impl MetricsCollector {
         Self {
             inner: Arc::new(Mutex::new(MetricsInner {
                 start_time: Instant::now(),
-                latencies_us: Vec::new(),
+                latencies_us: Vec::with_capacity(10000), // Pre-allocate for typical workloads
                 status_codes: StatusCodeDistribution::default(),
                 errors: ErrorDistribution::default(),
                 total_requests: 0,
