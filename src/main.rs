@@ -1,6 +1,7 @@
 mod authorization;
 mod client;
 mod config;
+mod discovery;
 mod metrics;
 mod patterns;
 mod reporter;
@@ -36,6 +37,13 @@ async fn main() -> Result<()> {
     if let Some(ref stress_pattern) = config.stress_pattern {
         authorization::validate_and_warn(stress_pattern, &config.authorization, &config.safety_limits)?;
     }
+
+    // Port Discovery Phase (if enabled for any target)
+    let config = if should_perform_discovery(&config) {
+        perform_discovery(config).await?
+    } else {
+        config
+    };
 
     // Print startup info
     print_startup_info(&config);
@@ -447,4 +455,250 @@ fn print_startup_info(config: &Config) {
     }
 
     println!("{}\n", "=".repeat(80));
+}
+
+/// Check if any target has discovery enabled
+fn should_perform_discovery(config: &Config) -> bool {
+    // Check single target
+    if let Some(ref discovery) = config.target.discovery {
+        if discovery.enabled {
+            return true;
+        }
+    }
+
+    // Check multi-target
+    if let Some(ref targets) = config.targets {
+        for target in &targets.targets {
+            if let Some(ref discovery) = target.discovery {
+                if discovery.enabled {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+/// Perform port discovery for all enabled targets
+async fn perform_discovery(mut config: Config) -> Result<Config> {
+    println!("\n{}", "=".repeat(80));
+    println!("                    PORT DISCOVERY PHASE");
+    println!("{}\n", "=".repeat(80));
+
+    let mut targets_to_discover = Vec::new();
+
+    // Collect single target if discovery enabled
+    if let Some(ref discovery) = config.target.discovery {
+        if discovery.enabled && !config.target.url.is_empty() {
+            let host = discovery::extract_host_from_url(&config.target.url)?;
+            let id = if config.target.id.is_empty() {
+                "target".to_string()
+            } else {
+                config.target.id.clone()
+            };
+            targets_to_discover.push((id, host, discovery.clone()));
+        }
+    }
+
+    // Collect multi-targets if discovery enabled
+    if let Some(ref targets) = config.targets {
+        for (i, target) in targets.targets.iter().enumerate() {
+            if let Some(ref discovery) = target.discovery {
+                if discovery.enabled {
+                    let host = discovery::extract_host_from_url(&target.url)?;
+                    let id = if target.id.is_empty() {
+                        format!("target-{}", i)
+                    } else {
+                        target.id.clone()
+                    };
+                    targets_to_discover.push((id, host, discovery.clone()));
+                }
+            }
+        }
+    }
+
+    if targets_to_discover.is_empty() {
+        println!("No targets with discovery enabled.\n");
+        return Ok(config);
+    }
+
+    // Perform discovery
+    let results = discovery::discover_targets(&targets_to_discover).await?;
+
+    // Display results
+    display_discovery_results(&results);
+
+    // Handle failures
+    handle_discovery_failures(&results, &targets_to_discover)?;
+
+    // Apply discovery results (update URLs if needed)
+    config = apply_discovery_results(config, results)?;
+
+    Ok(config)
+}
+
+/// Display discovery results
+fn display_discovery_results(results: &[discovery::DiscoveryResult]) {
+    for result in results {
+        println!("Target: {} ({})", result.target_id, result.host);
+        println!("Discovery Duration: {:.2}s", result.duration.as_secs_f64());
+
+        if !result.discovered_ports.is_empty() {
+            println!("\n  Open Ports:");
+            for port_info in &result.discovered_ports {
+                let service = match &port_info.service_type {
+                    Some(discovery::ServiceType::Http) => " [HTTP]",
+                    Some(discovery::ServiceType::Https) => " [HTTPS]",
+                    Some(discovery::ServiceType::Unknown) => " [Unknown]",
+                    None => "",
+                };
+                println!(
+                    "    - Port {}{} - {:.2}ms response",
+                    port_info.port, service, port_info.response_time_ms
+                );
+            }
+        }
+
+        if !result.failed_ports.is_empty() {
+            println!("\n  Failed Ports:");
+            for failure in &result.failed_ports {
+                println!("    - Port {}: {}", failure.port, failure.error);
+            }
+        }
+
+        println!();
+    }
+
+    println!("{}\n", "=".repeat(80));
+}
+
+/// Handle discovery failures based on on_failure setting
+fn handle_discovery_failures(
+    results: &[discovery::DiscoveryResult],
+    targets: &[(String, String, discovery::PortDiscoveryConfig)],
+) -> Result<()> {
+    for (result, (_, _, config)) in results.iter().zip(targets.iter()) {
+        if !result.failed_ports.is_empty() || result.discovered_ports.is_empty() {
+            match config.on_failure {
+                discovery::FailureAction::Fail => {
+                    anyhow::bail!(
+                        "Port discovery failed for target '{}'. {} port(s) failed, {} succeeded. \
+                        Set on_failure to 'skip' or 'warn' to continue anyway.",
+                        result.target_id,
+                        result.failed_ports.len(),
+                        result.discovered_ports.len()
+                    );
+                }
+                discovery::FailureAction::Skip => {
+                    tracing::warn!(
+                        "Port discovery had failures for target '{}', but continuing (on_failure=skip). \
+                        {} port(s) failed, {} succeeded.",
+                        result.target_id,
+                        result.failed_ports.len(),
+                        result.discovered_ports.len()
+                    );
+                }
+                discovery::FailureAction::Warn => {
+                    tracing::warn!(
+                        "Port discovery had failures for target '{}', but continuing (on_failure=warn). \
+                        {} port(s) failed, {} succeeded.",
+                        result.target_id,
+                        result.failed_ports.len(),
+                        result.discovered_ports.len()
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Apply discovery results to update target URLs if needed
+fn apply_discovery_results(
+    mut config: Config,
+    results: Vec<discovery::DiscoveryResult>,
+) -> Result<Config> {
+    // Create a map for quick lookup
+    let mut results_map: std::collections::HashMap<String, discovery::DiscoveryResult> =
+        results.into_iter().map(|r| (r.target_id.clone(), r)).collect();
+
+    // Update single target if applicable
+    if let Some(ref discovery_config) = config.target.discovery {
+        if discovery_config.enabled {
+            let id = if config.target.id.is_empty() {
+                "target".to_string()
+            } else {
+                config.target.id.clone()
+            };
+
+            if let Some(result) = results_map.remove(&id) {
+                if let Some(best_port) = find_best_port(&result) {
+                    config.target.url = update_url_port(&config.target.url, best_port)?;
+                    tracing::info!(
+                        "Updated target URL to use discovered port: {}",
+                        config.target.url
+                    );
+                }
+            }
+        }
+    }
+
+    // Update multi-targets if applicable
+    if let Some(ref mut targets) = config.targets {
+        for (i, target) in targets.targets.iter_mut().enumerate() {
+            if let Some(ref discovery_config) = target.discovery {
+                if discovery_config.enabled {
+                    let id = if target.id.is_empty() {
+                        format!("target-{}", i)
+                    } else {
+                        target.id.clone()
+                    };
+
+                    if let Some(result) = results_map.remove(&id) {
+                        if let Some(best_port) = find_best_port(&result) {
+                            target.url = update_url_port(&target.url, best_port)?;
+                            tracing::info!(
+                                "Updated target '{}' URL to use discovered port: {}",
+                                id,
+                                target.url
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(config)
+}
+
+/// Find the best port from discovery results (prefer HTTPS > HTTP > first available)
+fn find_best_port(result: &discovery::DiscoveryResult) -> Option<u16> {
+    // Prefer HTTPS
+    for port_info in &result.discovered_ports {
+        if port_info.service_type == Some(discovery::ServiceType::Https) {
+            return Some(port_info.port);
+        }
+    }
+
+    // Then HTTP
+    for port_info in &result.discovered_ports {
+        if port_info.service_type == Some(discovery::ServiceType::Http) {
+            return Some(port_info.port);
+        }
+    }
+
+    // Otherwise first available
+    result.discovered_ports.first().map(|p| p.port)
+}
+
+/// Update URL to use a specific port
+fn update_url_port(url: &str, port: u16) -> Result<String> {
+    let mut parsed = url::Url::parse(url)?;
+    parsed.set_port(Some(port)).map_err(|_| {
+        anyhow::anyhow!("Failed to set port {} on URL {}", port, url)
+    })?;
+    Ok(parsed.to_string())
 }

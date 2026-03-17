@@ -1,0 +1,28 @@
+# Test configuration for multi-port discovery
+# Tests HTTP and HTTPS against google.com
+
+target:
+  url: "https://google.com/"
+  method: "GET"
+
+  discovery:
+    enabled: true
+    mode: validate
+    ports: [80, 443]  # Check both HTTP and HTTPS
+    timeout_ms: 2000
+    retries: 1
+    on_failure: warn
+    detect_service: true
+    validate_http: true
+
+pattern:
+  type: fixed
+  concurrent: 1
+  total_requests: 1
+
+client:
+  timeout_secs: 10
+
+output:
+  console: true
+  realtime_updates: false

@@ -62,6 +62,41 @@ A high-performance Rust-based HTTP/HTTPS benchmarking tool that simulates client
   - Per-target metrics breakdown
   - JSON export for further analysis
 
+### Phase 3: Port Discovery
+
+- **Pre-flight Validation**:
+  - TCP port connectivity checks before load testing
+  - HTTP/HTTPS service detection
+  - Configurable timeout and retry logic
+  - Catch configuration errors early
+
+- **Service Discovery**:
+  - Port range scanning (e.g., 8000-9000)
+  - Automatic protocol detection (HTTP vs HTTPS)
+  - Multi-port validation (check multiple ports)
+  - Auto-update URLs to use discovered services
+
+- **Discovery Modes**:
+  - Validate mode - verify explicit ports are reachable
+  - Scan mode - discover available services in port ranges
+  - Both mode - validate + scan combination
+
+- **Failure Handling**:
+  - Fail - stop execution if ports unreachable
+  - Skip - continue with reachable targets only
+  - Warn - log warnings but continue with all targets
+
+- **Per-Target Configuration**:
+  - Optional discovery per target in multi-target mode
+  - Independent discovery settings per target
+  - Mixed mode (some targets with discovery, others without)
+
+- **Discovery Results Display**:
+  - Port status (open/closed)
+  - Response times per port
+  - Service type detection (HTTP/HTTPS/Unknown)
+  - Clear failure messages
+
 ## Installation
 
 ```bash
@@ -300,6 +335,210 @@ Target: api1 (33.3% of traffic)
   Connection Errors:
     - Timeout:        15
 ```
+
+## Port Discovery
+
+Port discovery validates connectivity and discovers available services before running load tests. This helps catch configuration errors early and can auto-detect the correct protocol and port to use.
+
+### Use Cases
+
+- **Pre-flight validation** - Verify endpoints are reachable before expensive tests
+- **Service discovery** - Find HTTP/HTTPS services on non-standard ports
+- **Multi-environment testing** - Validate connectivity across different targets
+- **Dynamic configuration** - Auto-detect correct ports and protocols
+
+### Discovery Modes
+
+#### Validate Mode
+Checks that explicitly specified ports are reachable:
+
+```yaml
+target:
+  url: "https://api.example.com:8443/health"
+  method: "GET"
+
+  discovery:
+    enabled: true
+    mode: validate
+    ports: 8443
+    timeout_ms: 3000
+    retries: 2
+    on_failure: fail
+    detect_service: true
+    validate_http: true
+
+pattern:
+  type: fixed
+  concurrent: 50
+  duration_secs: 60
+```
+
+#### Scan Mode
+Scans a port range to discover available services:
+
+```yaml
+target:
+  url: "http://api.example.com/health"
+  method: "GET"
+
+  discovery:
+    enabled: true
+    mode: scan
+    ports:
+      start: 8000
+      end: 9000
+    timeout_ms: 1000
+    retries: 1
+    on_failure: skip
+    detect_service: true
+    validate_http: true
+
+pattern:
+  type: fixed
+  concurrent: 10
+  duration_secs: 30
+```
+
+#### Both Mode
+Validates explicit ports AND scans for additional services:
+
+```yaml
+target:
+  url: "https://api.example.com/health"
+  method: "GET"
+
+  discovery:
+    enabled: true
+    mode: both
+    ports: [80, 443, 8080, 8443]
+    timeout_ms: 2000
+    retries: 2
+    on_failure: warn
+    detect_service: true
+    validate_http: true
+```
+
+### Failure Handling
+
+Configure how discovery failures are handled:
+
+- **fail** - Stop execution with error (default)
+- **skip** - Continue with only reachable targets
+- **warn** - Log warning but continue with all targets
+
+```yaml
+discovery:
+  enabled: true
+  mode: validate
+  ports: 443
+  on_failure: fail  # Change to 'skip' or 'warn' as needed
+```
+
+### Multi-Target Discovery
+
+Each target can have independent discovery configuration:
+
+```yaml
+targets:
+  distribution:
+    strategy: roundrobin
+  targets:
+    - id: "api1"
+      url: "https://api1.example.com/health"
+      discovery:
+        enabled: true
+        mode: validate
+        ports: [80, 443, 8080]
+        on_failure: skip
+
+    - id: "api2"
+      url: "https://api2.example.com/health"
+      discovery:
+        enabled: true
+        mode: scan
+        ports:
+          start: 8000
+          end: 8010
+        on_failure: warn
+
+    - id: "api3"
+      url: "https://api3.example.com/health"
+      # No discovery - use URL as-is
+
+pattern:
+  type: fixed
+  concurrent: 50
+  duration_secs: 60
+```
+
+### Discovery Output
+
+Discovery results are displayed before the load test starts:
+
+```
+================================================================================
+                    PORT DISCOVERY PHASE
+================================================================================
+
+Target: api1 (api1.example.com)
+Discovery Duration: 1.23s
+
+  Open Ports:
+    - Port 80 [HTTP] - 45.23ms response
+    - Port 443 [HTTPS] - 52.18ms response
+    - Port 8080 [HTTP] - 48.91ms response
+
+  Failed Ports:
+    - Port 8443: Connection timeout
+
+Target: api2 (api2.example.com)
+Discovery Duration: 0.89s
+
+  Open Ports:
+    - Port 443 [HTTPS] - 38.45ms response
+
+================================================================================
+```
+
+### Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | false | Enable port discovery for this target |
+| `mode` | validate/scan/both | validate | Discovery mode |
+| `ports` | int/array/range | - | Port(s) to check |
+| `timeout_ms` | integer | 2000 | Timeout per port in milliseconds |
+| `retries` | integer | 2 | Number of retry attempts |
+| `on_failure` | fail/skip/warn | fail | How to handle failures |
+| `detect_service` | boolean | true | Detect HTTP vs HTTPS |
+| `validate_http` | boolean | true | Validate HTTP responses |
+
+### Port Specification Formats
+
+Single port:
+```yaml
+ports: 8080
+```
+
+Multiple ports:
+```yaml
+ports: [80, 443, 8080]
+```
+
+Port range:
+```yaml
+ports:
+  start: 8000
+  end: 9000
+```
+
+### Example Configurations
+
+See the following example files:
+- `config.discovery-validate.example.yaml` - Validate specific ports
+- `config.discovery-scan.example.yaml` - Scan port ranges
+- `config.multi-target-discovery.example.yaml` - Multi-target with mixed discovery
+- `config.discovery-auto-detect.example.yaml` - Auto-detect best service
 
 ## Stress Testing (Authorized Use Only)
 

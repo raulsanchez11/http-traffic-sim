@@ -1,0 +1,28 @@
+# Test configuration for port discovery
+# Tests against google.com which should be reachable
+
+target:
+  url: "https://google.com/"
+  method: "GET"
+
+  discovery:
+    enabled: true
+    mode: validate
+    ports: 443
+    timeout_ms: 2000
+    retries: 1
+    on_failure: fail
+    detect_service: true
+    validate_http: true
+
+pattern:
+  type: fixed
+  concurrent: 1
+  total_requests: 1
+
+client:
+  timeout_secs: 10
+
+output:
+  console: true
+  realtime_updates: false

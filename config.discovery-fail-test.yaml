@@ -1,0 +1,28 @@
+# Test configuration for discovery failure handling
+# Tests against an unreachable port to verify on_failure behavior
+
+target:
+  url: "https://google.com:9999/"
+  method: "GET"
+
+  discovery:
+    enabled: true
+    mode: validate
+    ports: 9999  # This port should be closed
+    timeout_ms: 1000
+    retries: 0
+    on_failure: fail  # Should stop execution
+    detect_service: true
+    validate_http: true
+
+pattern:
+  type: fixed
+  concurrent: 1
+  total_requests: 1
+
+client:
+  timeout_secs: 10
+
+output:
+  console: true
+  realtime_updates: false

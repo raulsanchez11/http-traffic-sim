@@ -1,0 +1,36 @@
+# Example: Port Discovery - Validation Mode
+# This configuration validates that a specific port is reachable before running the load test.
+# If the port is unreachable, the test will fail immediately (on_failure: fail).
+
+target:
+  url: "https://api.example.com:8443/health"
+  method: "GET"
+  headers:
+    Authorization: "Bearer token123"
+
+  # Port discovery configuration
+  discovery:
+    enabled: true
+    mode: validate              # Only validate the port specified in the URL
+    ports: 8443                 # Single port to check
+    timeout_ms: 3000            # 3 second timeout per port check
+    retries: 2                  # Retry failed checks twice
+    on_failure: fail            # Stop if port is unreachable
+    detect_service: true        # Detect if it's HTTP or HTTPS
+    validate_http: true         # Validate HTTP response
+
+# Traffic pattern
+pattern:
+  type: fixed
+  concurrent: 50
+  duration_secs: 60
+
+# Client configuration
+client:
+  timeout_secs: 30
+  pool_max_idle_per_host: 128
+
+# Output configuration
+output:
+  console: true
+  realtime_updates: false

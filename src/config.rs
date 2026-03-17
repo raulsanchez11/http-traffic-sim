@@ -129,6 +129,10 @@ pub struct TargetConfig {
 
     #[serde(default)]
     pub body: Option<String>,
+
+    /// Optional port discovery configuration
+    #[serde(default)]
+    pub discovery: Option<crate::discovery::PortDiscoveryConfig>,
 }
 
 impl Default for TargetConfig {
@@ -139,6 +143,7 @@ impl Default for TargetConfig {
             method: default_method(),
             headers: HashMap::new(),
             body: None,
+            discovery: None,
         }
     }
 }

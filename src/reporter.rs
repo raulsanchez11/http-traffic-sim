@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+use crate::discovery::DiscoveryResult;
 use crate::stats::Statistics;
 
 pub struct Reporter {
@@ -116,6 +117,13 @@ impl Reporter {
         let json = serde_json::to_string_pretty(stats)?;
         std::fs::write(path, json)?;
         println!("Results exported to: {}", path.display());
+        Ok(())
+    }
+
+    pub fn export_discovery_results(&self, results: &[DiscoveryResult], path: &PathBuf) -> Result<()> {
+        let json = serde_json::to_string_pretty(results)?;
+        std::fs::write(path, json)?;
+        println!("Discovery results exported to: {}", path.display());
         Ok(())
     }
 }

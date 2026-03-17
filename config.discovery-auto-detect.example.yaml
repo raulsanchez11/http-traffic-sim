@@ -1,0 +1,38 @@
+# Example: Port Discovery with Auto-Detection
+# This configuration uses discovery to automatically detect the best service to use.
+# It will try multiple ports and protocols, preferring HTTPS over HTTP.
+
+target:
+  url: "http://example.com/api"   # Initial guess (may be wrong)
+  method: "POST"
+  headers:
+    Content-Type: "application/json"
+  body: '{"test": "data"}'
+
+  # Auto-detect best service
+  discovery:
+    enabled: true
+    mode: both                  # Validate + scan for best option
+    ports: [80, 443, 8080, 8443]  # Common HTTP/HTTPS ports
+    timeout_ms: 2000
+    retries: 2
+    on_failure: fail            # Must find at least one working port
+    detect_service: true        # Auto-detect HTTP vs HTTPS
+    validate_http: true         # Validate endpoints respond
+    # URL will be auto-updated to use discovered HTTPS if available
+
+# Traffic pattern
+pattern:
+  type: fixed
+  concurrent: 20
+  duration_secs: 60
+
+# Client configuration
+client:
+  timeout_secs: 30
+  pool_max_idle_per_host: 128
+
+# Output configuration
+output:
+  console: true
+  realtime_updates: false

@@ -1,0 +1,35 @@
+# Example: Port Discovery - Scan Mode
+# This configuration scans a range of ports to discover available HTTP/HTTPS services.
+# The discovered service will be used for the load test.
+
+target:
+  url: "http://api.example.com/health"  # Initial guess
+  method: "GET"
+
+  # Port discovery configuration
+  discovery:
+    enabled: true
+    mode: scan                  # Scan for available services
+    ports:
+      start: 8000
+      end: 9000                 # Scan ports 8000-9000
+    timeout_ms: 1000            # 1 second timeout per port
+    retries: 1                  # Single retry for failed checks
+    on_failure: skip            # Continue with discovered ports only
+    detect_service: true        # Identify HTTP vs HTTPS
+    validate_http: true         # Validate HTTP responses
+
+# Traffic pattern
+pattern:
+  type: fixed
+  concurrent: 10
+  duration_secs: 30
+
+# Client configuration
+client:
+  timeout_secs: 30
+
+# Output configuration
+output:
+  console: true
+  realtime_updates: false

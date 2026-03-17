@@ -1,0 +1,69 @@
+# Example: Multi-Target with Mixed Discovery
+# This configuration demonstrates different discovery modes for different targets:
+# - api1: Validates multiple explicit ports
+# - api2: Scans a port range to find services
+# - api3: No discovery (uses URL as-is)
+
+targets:
+  distribution:
+    strategy: roundrobin
+
+  targets:
+    - id: "api1"
+      url: "https://api1.example.com/health"
+      method: "GET"
+      headers:
+        X-Service: "api1"
+
+      # Validate explicit ports
+      discovery:
+        enabled: true
+        mode: validate
+        ports: [80, 443, 8080]  # Check these three ports
+        timeout_ms: 2000
+        retries: 2
+        on_failure: skip        # Skip this target if all ports fail
+        detect_service: true
+        validate_http: true
+
+    - id: "api2"
+      url: "https://api2.example.com/health"
+      method: "GET"
+      headers:
+        X-Service: "api2"
+
+      # Scan and validate
+      discovery:
+        enabled: true
+        mode: both              # Validate URL port + scan range
+        ports:
+          start: 8000
+          end: 8010             # Scan ports 8000-8010
+        timeout_ms: 2000
+        retries: 1
+        on_failure: warn        # Warn but continue with all targets
+        detect_service: true
+        validate_http: true
+
+    - id: "api3"
+      url: "https://api3.example.com/health"
+      method: "GET"
+      headers:
+        X-Service: "api3"
+      # No discovery - use URL as configured
+
+# Traffic pattern
+pattern:
+  type: fixed
+  concurrent: 50
+  duration_secs: 60
+
+# Client configuration
+client:
+  timeout_secs: 30
+  pool_max_idle_per_host: 128
+
+# Output configuration
+output:
+  console: true
+  realtime_updates: false
