@@ -1,6 +1,6 @@
+use crate::config::{AuthorizationConfig, SafetyLimits, StressPattern};
 use anyhow::Result;
 use std::io::{self, Write};
-use crate::config::{AuthorizationConfig, SafetyLimits, StressPattern};
 
 /// Validates authorization for stress testing and displays warnings
 pub fn validate_and_warn(
@@ -36,7 +36,11 @@ pub fn validate_and_warn(
     }
 }
 
-fn display_stress_warning(pattern: &StressPattern, auth: &AuthorizationConfig, safety_limits: &SafetyLimits) {
+fn display_stress_warning(
+    pattern: &StressPattern,
+    auth: &AuthorizationConfig,
+    safety_limits: &SafetyLimits,
+) {
     println!("\n{}", "!".repeat(80));
     println!("                      ⚠️  STRESS TEST WARNING ⚠️");
     println!("{}\n", "!".repeat(80));
@@ -105,43 +109,69 @@ fn display_stress_warning(pattern: &StressPattern, auth: &AuthorizationConfig, s
 
 fn pattern_description(pattern: &StressPattern) -> String {
     match pattern {
-        StressPattern::ConnectionFlood { connections_per_second, hold_time_ms, duration_secs } => {
+        StressPattern::ConnectionFlood {
+            connections_per_second,
+            hold_time_ms,
+            duration_secs,
+        } => {
             format!(
                 "Connection Flood - {} conn/s, hold {}ms, duration {}s",
                 connections_per_second, hold_time_ms, duration_secs
             )
         }
-        StressPattern::Slowloris { connections, headers_per_second, duration_secs } => {
+        StressPattern::Slowloris {
+            connections,
+            headers_per_second,
+            duration_secs,
+        } => {
             format!(
                 "Slowloris - {} connections, {:.2} headers/s, duration {}s",
                 connections, headers_per_second, duration_secs
             )
         }
-        StressPattern::SlowPost { connections, bytes_per_second, payload_size } => {
+        StressPattern::SlowPost {
+            connections,
+            bytes_per_second,
+            payload_size,
+        } => {
             format!(
                 "Slow POST - {} connections, {} bytes/s, payload {} bytes",
                 connections, bytes_per_second, payload_size
             )
         }
-        StressPattern::RequestFlood { target_rps, duration_secs } => {
+        StressPattern::RequestFlood {
+            target_rps,
+            duration_secs,
+        } => {
             format!(
                 "Request Flood - {} req/s, duration {}s",
                 target_rps, duration_secs
             )
         }
-        StressPattern::LargePayload { size_mb, concurrent, duration_secs } => {
+        StressPattern::LargePayload {
+            size_mb,
+            concurrent,
+            duration_secs,
+        } => {
             format!(
                 "Large Payload - {} MB, {} concurrent, duration {}s",
                 size_mb, concurrent, duration_secs
             )
         }
-        StressPattern::PipelineAbuse { requests_per_connection, concurrent_connections } => {
+        StressPattern::PipelineAbuse {
+            requests_per_connection,
+            concurrent_connections,
+        } => {
             format!(
                 "Pipeline Abuse - {} req/conn, {} connections",
                 requests_per_connection, concurrent_connections
             )
         }
-        StressPattern::SlowRead { connections, read_rate_bps, duration_secs } => {
+        StressPattern::SlowRead {
+            connections,
+            read_rate_bps,
+            duration_secs,
+        } => {
             format!(
                 "Slow Read - {} connections, {} bytes/s, duration {}s",
                 connections, read_rate_bps, duration_secs

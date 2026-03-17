@@ -1,5 +1,4 @@
 use anyhow::Result;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{interval, sleep, Instant};
 use tokio_util::sync::CancellationToken;
@@ -30,16 +29,26 @@ impl StressExecutor {
                 hold_time_ms,
                 duration_secs,
             } => {
-                self.execute_connection_flood(*connections_per_second, *hold_time_ms, *duration_secs, cancel_token)
-                    .await
+                self.execute_connection_flood(
+                    *connections_per_second,
+                    *hold_time_ms,
+                    *duration_secs,
+                    cancel_token,
+                )
+                .await
             }
             StressPattern::Slowloris {
                 connections,
                 headers_per_second,
                 duration_secs,
             } => {
-                self.execute_slowloris(*connections, *headers_per_second, *duration_secs, cancel_token)
-                    .await
+                self.execute_slowloris(
+                    *connections,
+                    *headers_per_second,
+                    *duration_secs,
+                    cancel_token,
+                )
+                .await
             }
             StressPattern::SlowPost {
                 connections,
@@ -68,8 +77,12 @@ impl StressExecutor {
                 requests_per_connection,
                 concurrent_connections,
             } => {
-                self.execute_pipeline_abuse(*requests_per_connection, *concurrent_connections, cancel_token)
-                    .await
+                self.execute_pipeline_abuse(
+                    *requests_per_connection,
+                    *concurrent_connections,
+                    cancel_token,
+                )
+                .await
             }
             StressPattern::SlowRead {
                 connections,
@@ -159,7 +172,9 @@ impl StressExecutor {
 
                     // Send partial headers (this is a simplified version)
                     let partial = "GET / HTTP/1.1\r\nHost: example.com\r\nX-";
-                    let _ = client.send_partial_request("http://example.com", partial).await;
+                    let _ = client
+                        .send_partial_request("http://example.com", partial)
+                        .await;
                 }
             });
 

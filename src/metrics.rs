@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 pub struct RequestResult {
+    #[allow(dead_code)]
     pub start_time: Instant,
     pub duration: Duration,
     pub status_code: Option<u16>,
@@ -44,7 +45,10 @@ impl ConnectionStats {
             self.timeout_count.fetch_add(1, Ordering::Relaxed);
         } else if error_lower.contains("connection reset") || error_lower.contains("econnreset") {
             self.reset_by_peer_count.fetch_add(1, Ordering::Relaxed);
-        } else if error_lower.contains("tls") || error_lower.contains("ssl") || error_lower.contains("certificate") {
+        } else if error_lower.contains("tls")
+            || error_lower.contains("ssl")
+            || error_lower.contains("certificate")
+        {
             self.tls_handshake_errors.fetch_add(1, Ordering::Relaxed);
         } else if error_lower.contains("dns") || error_lower.contains("resolve") {
             self.dns_errors.fetch_add(1, Ordering::Relaxed);
@@ -85,6 +89,7 @@ impl StatusCodeDistribution {
         *self.counts.entry(code).or_insert(0) += 1;
     }
 
+    #[allow(dead_code)]
     pub fn merge(&mut self, other: &StatusCodeDistribution) {
         for (code, count) in &other.counts {
             *self.counts.entry(*code).or_insert(0) += count;
@@ -102,6 +107,7 @@ impl ErrorDistribution {
         *self.counts.entry(error).or_insert(0) += 1;
     }
 
+    #[allow(dead_code)]
     pub fn merge(&mut self, other: &ErrorDistribution) {
         for (error, count) in &other.counts {
             *self.counts.entry(error.clone()).or_insert(0) += count;
@@ -208,6 +214,7 @@ pub struct MetricsSnapshot {
 /// Per-target metrics tracker
 #[derive(Clone)]
 pub struct TargetMetrics {
+    #[allow(dead_code)]
     pub target_id: String,
     pub collector: MetricsCollector,
 }

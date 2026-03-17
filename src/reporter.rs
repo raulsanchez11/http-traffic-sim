@@ -66,10 +66,19 @@ impl Reporter {
         println!("                        FINAL RESULTS");
         println!("{}\n", "=".repeat(80));
 
-        println!("Duration:              {:.2}s", stats.duration.as_secs_f64());
+        println!(
+            "Duration:              {:.2}s",
+            stats.duration.as_secs_f64()
+        );
         println!("Total Requests:        {}", stats.total_requests);
-        println!("Successful:            {} ({:.1}%)", stats.successful_requests, stats.success_rate);
-        println!("Failed:                {} ({:.1}%)", stats.failed_requests, stats.error_rate);
+        println!(
+            "Successful:            {} ({:.1}%)",
+            stats.successful_requests, stats.success_rate
+        );
+        println!(
+            "Failed:                {} ({:.1}%)",
+            stats.failed_requests, stats.error_rate
+        );
         println!("Requests/sec:          {:.2}", stats.requests_per_second);
 
         println!("\n{}", "-".repeat(80));
@@ -106,7 +115,10 @@ impl Reporter {
                 println!("  {}: {} ({:.1}%)", error, count, percentage);
             }
             if stats.errors.len() > max_errors_to_show {
-                println!("  ... and {} more error types", stats.errors.len() - max_errors_to_show);
+                println!(
+                    "  ... and {} more error types",
+                    stats.errors.len() - max_errors_to_show
+                );
             }
         }
 
@@ -120,7 +132,12 @@ impl Reporter {
         Ok(())
     }
 
-    pub fn export_discovery_results(&self, results: &[DiscoveryResult], path: &PathBuf) -> Result<()> {
+    #[allow(dead_code)]
+    pub fn export_discovery_results(
+        &self,
+        results: &[DiscoveryResult],
+        path: &PathBuf,
+    ) -> Result<()> {
         let json = serde_json::to_string_pretty(results)?;
         std::fs::write(path, json)?;
         println!("Discovery results exported to: {}", path.display());

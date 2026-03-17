@@ -71,6 +71,7 @@ pub struct CliArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct ConfigFile {
     #[serde(default)]
     pub target: TargetConfig,
@@ -99,20 +100,6 @@ pub struct ConfigFile {
     pub output: OutputConfig,
 }
 
-impl Default for ConfigFile {
-    fn default() -> Self {
-        Self {
-            target: TargetConfig::default(),
-            targets: None,
-            pattern: TrafficPattern::default(),
-            stress_pattern: None,
-            authorization: None,
-            safety_limits: SafetyLimits::default(),
-            client: ClientConfig::default(),
-            output: OutputConfig::default(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetConfig {
@@ -260,6 +247,7 @@ pub struct AuthorizationConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct SafetyLimits {
     /// Maximum connections per second (None = unlimited)
     pub max_connections_per_second: Option<usize>,
@@ -274,16 +262,6 @@ pub struct SafetyLimits {
     pub max_concurrent_connections: Option<usize>,
 }
 
-impl Default for SafetyLimits {
-    fn default() -> Self {
-        Self {
-            max_connections_per_second: None,
-            max_requests_per_second: None,
-            max_payload_size_mb: None,
-            max_concurrent_connections: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientConfig {
@@ -398,8 +376,14 @@ impl Config {
         // Validate configuration
         // Check if we have either a single target or multi-target configuration
         let has_single_target = !config.target.url.is_empty();
-        let has_multi_target = config.targets.is_some() &&
-            config.targets.as_ref().unwrap().targets.iter().any(|t| !t.url.is_empty());
+        let has_multi_target = config.targets.is_some()
+            && config
+                .targets
+                .as_ref()
+                .unwrap()
+                .targets
+                .iter()
+                .any(|t| !t.url.is_empty());
         let has_stress_pattern = config.stress_pattern.is_some();
 
         // For stress tests, require single target
@@ -434,20 +418,13 @@ impl Config {
         let contents = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
 
-        let extension = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         match extension {
             "yaml" | "yml" => {
-                serde_yaml::from_str(&contents)
-                    .with_context(|| "Failed to parse YAML config")
+                serde_yaml::from_str(&contents).with_context(|| "Failed to parse YAML config")
             }
-            "toml" => {
-                toml::from_str(&contents)
-                    .with_context(|| "Failed to parse TOML config")
-            }
+            "toml" => toml::from_str(&contents).with_context(|| "Failed to parse TOML config"),
             _ => {
                 anyhow::bail!("Unsupported config file format. Use .yaml, .yml, or .toml")
             }
@@ -457,8 +434,12 @@ impl Config {
     fn pattern_from_args(args: &CliArgs) -> Result<Option<TrafficPattern>> {
         // Burst mode
         if args.burst_size.is_some() || args.burst_interval.is_some() {
-            let size = args.burst_size.context("--burst-size is required for burst mode")?;
-            let interval = args.burst_interval.context("--burst-interval is required for burst mode")?;
+            let size = args
+                .burst_size
+                .context("--burst-size is required for burst mode")?;
+            let interval = args
+                .burst_interval
+                .context("--burst-interval is required for burst mode")?;
 
             return Ok(Some(TrafficPattern::Burst {
                 size,
@@ -470,9 +451,15 @@ impl Config {
 
         // Ramp-up mode
         if args.ramp_from.is_some() || args.ramp_to.is_some() || args.ramp_duration.is_some() {
-            let from = args.ramp_from.context("--ramp-from is required for ramp mode")?;
-            let to = args.ramp_to.context("--ramp-to is required for ramp mode")?;
-            let ramp_duration = args.ramp_duration.context("--ramp-duration is required for ramp mode")?;
+            let from = args
+                .ramp_from
+                .context("--ramp-from is required for ramp mode")?;
+            let to = args
+                .ramp_to
+                .context("--ramp-to is required for ramp mode")?;
+            let ramp_duration = args
+                .ramp_duration
+                .context("--ramp-duration is required for ramp mode")?;
 
             return Ok(Some(TrafficPattern::Ramp {
                 from,
@@ -542,7 +529,10 @@ impl Config {
     fn validate_safety_limits(&self) -> Result<()> {
         if let Some(ref pattern) = self.stress_pattern {
             match pattern {
-                StressPattern::ConnectionFlood { connections_per_second, .. } => {
+                StressPattern::ConnectionFlood {
+                    connections_per_second,
+                    ..
+                } => {
                     if let Some(max) = self.safety_limits.max_connections_per_second {
                         if *connections_per_second > max {
                             anyhow::bail!(
@@ -570,7 +560,8 @@ impl Config {
                             anyhow::bail!(
                                 "Payload size {} MB exceeds safety limit of {} MB. \
                                 Adjust your config or increase safety_limits.max_payload_size_mb",
-                                size_mb, max
+                                size_mb,
+                                max
                             );
                         }
                     }
@@ -588,7 +579,10 @@ impl Config {
                         }
                     }
                 }
-                StressPattern::PipelineAbuse { concurrent_connections, .. } => {
+                StressPattern::PipelineAbuse {
+                    concurrent_connections,
+                    ..
+                } => {
                     if let Some(max) = self.safety_limits.max_concurrent_connections {
                         if *concurrent_connections > max {
                             anyhow::bail!(

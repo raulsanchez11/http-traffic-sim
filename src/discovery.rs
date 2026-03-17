@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpStream;
@@ -63,17 +62,14 @@ fn default_true() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum DiscoveryMode {
-    Validate,  // Only validate explicit ports
-    Scan,      // Scan port ranges
-    Both,      // Validate + scan
+    #[default]
+    Validate, // Only validate explicit ports
+    Scan,     // Scan port ranges
+    Both,     // Validate + scan
 }
 
-impl Default for DiscoveryMode {
-    fn default() -> Self {
-        DiscoveryMode::Validate
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -95,17 +91,14 @@ impl PortSpec {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum FailureAction {
-    Fail,  // Stop execution with error
-    Skip,  // Continue with reachable targets only
-    Warn,  // Log warning but continue with all
+    #[default]
+    Fail, // Stop execution with error
+    Skip, // Continue with reachable targets only
+    Warn, // Log warning but continue with all
 }
 
-impl Default for FailureAction {
-    fn default() -> Self {
-        FailureAction::Fail
-    }
-}
 
 /// Discovery results for a target
 #[derive(Debug, Clone, Serialize)]
@@ -130,6 +123,7 @@ pub struct PortInfo {
 pub enum PortStatus {
     Open,
     Closed,
+    #[allow(dead_code)]
     Filtered,
 }
 
@@ -220,7 +214,7 @@ async fn detect_http_service(
     // Build HTTP client for discovery with relaxed security
     let client = match reqwest::Client::builder()
         .timeout(timeout_duration)
-        .danger_accept_invalid_certs(true)  // For discovery only
+        .danger_accept_invalid_certs(true) // For discovery only
         .build()
     {
         Ok(c) => c,
@@ -230,7 +224,10 @@ async fn detect_http_service(
     // Try HTTPS first
     let https_url = format!("https://{}:{}/", host, port);
     if let Ok(resp) = client.get(&https_url).send().await {
-        if resp.status().is_success() || resp.status().is_redirection() || resp.status().is_client_error() {
+        if resp.status().is_success()
+            || resp.status().is_redirection()
+            || resp.status().is_client_error()
+        {
             return Some(ServiceType::Https);
         }
     }
@@ -238,7 +235,10 @@ async fn detect_http_service(
     // Try HTTP
     let http_url = format!("http://{}:{}/", host, port);
     if let Ok(resp) = client.get(&http_url).send().await {
-        if resp.status().is_success() || resp.status().is_redirection() || resp.status().is_client_error() {
+        if resp.status().is_success()
+            || resp.status().is_redirection()
+            || resp.status().is_client_error()
+        {
             return Some(ServiceType::Http);
         }
     }
@@ -247,11 +247,7 @@ async fn detect_http_service(
 }
 
 /// Scan ports with concurrency control
-async fn scan_ports(
-    host: &str,
-    ports: &[u16],
-    config: &PortDiscoveryConfig,
-) -> Result<ScanResult> {
+async fn scan_ports(host: &str, ports: &[u16], config: &PortDiscoveryConfig) -> Result<ScanResult> {
     let timeout_duration = Duration::from_millis(config.timeout_ms);
     let semaphore = Arc::new(tokio::sync::Semaphore::new(10)); // Max 10 concurrent scans
 
@@ -266,20 +262,21 @@ async fn scan_ports(
             let _permit = sem.acquire().await.unwrap();
 
             // Check TCP connectivity
-            let check_result = match check_tcp_port(&host, port, timeout_duration, config.retries).await {
-                Ok(result) => result,
-                Err(e) => {
-                    return ScanPortResult::Failed(PortFailure {
-                        port,
-                        error: e.to_string(),
-                    });
-                }
-            };
+            let check_result =
+                match check_tcp_port(&host, port, timeout_duration, config.retries).await {
+                    Ok(result) => result,
+                    Err(e) => {
+                        return ScanPortResult::Failed(PortFailure {
+                            port,
+                            error: e.to_string(),
+                        });
+                    }
+                };
 
             if check_result.status != PortStatus::Open {
                 return ScanPortResult::Failed(PortFailure {
                     port,
-                    error: format!("Port closed or filtered"),
+                    error: "Port closed or filtered".to_string(),
                 });
             }
 
@@ -336,9 +333,8 @@ pub async fn discover_targets(
         let host = host.clone();
         let config = config.clone();
 
-        let task = tokio::spawn(async move {
-            discover_single_target(&target_id, &host, &config).await
-        });
+        let task =
+            tokio::spawn(async move { discover_single_target(&target_id, &host, &config).await });
 
         tasks.push(task);
     }
@@ -383,18 +379,18 @@ async fn discover_single_target(
 
 /// Extract host from URL
 pub fn extract_host_from_url(url: &str) -> Result<String> {
-    let parsed = url::Url::parse(url)
-        .with_context(|| format!("Invalid URL: {}", url))?;
+    let parsed = url::Url::parse(url).with_context(|| format!("Invalid URL: {}", url))?;
 
-    parsed.host_str()
+    parsed
+        .host_str()
         .map(|s| s.to_string())
         .ok_or_else(|| anyhow::anyhow!("URL has no host: {}", url))
 }
 
 /// Extract port from URL or use default
+#[allow(dead_code)]
 pub fn extract_port_from_url(url: &str) -> Result<u16> {
-    let parsed = url::Url::parse(url)
-        .with_context(|| format!("Invalid URL: {}", url))?;
+    let parsed = url::Url::parse(url).with_context(|| format!("Invalid URL: {}", url))?;
 
     if let Some(port) = parsed.port() {
         return Ok(port);
@@ -404,7 +400,10 @@ pub fn extract_port_from_url(url: &str) -> Result<u16> {
     match parsed.scheme() {
         "http" => Ok(80),
         "https" => Ok(443),
-        _ => Err(anyhow::anyhow!("Cannot determine default port for scheme: {}", parsed.scheme())),
+        _ => Err(anyhow::anyhow!(
+            "Cannot determine default port for scheme: {}",
+            parsed.scheme()
+        )),
     }
 }
 
@@ -426,7 +425,10 @@ mod tests {
 
     #[test]
     fn test_port_spec_range() {
-        let spec = PortSpec::Range { start: 8000, end: 8003 };
+        let spec = PortSpec::Range {
+            start: 8000,
+            end: 8003,
+        };
         assert_eq!(spec.to_vec(), vec![8000, 8001, 8002, 8003]);
     }
 
@@ -444,8 +446,17 @@ mod tests {
 
     #[test]
     fn test_extract_port() {
-        assert_eq!(extract_port_from_url("https://example.com/path").unwrap(), 443);
-        assert_eq!(extract_port_from_url("http://example.com/path").unwrap(), 80);
-        assert_eq!(extract_port_from_url("https://example.com:8443/path").unwrap(), 8443);
+        assert_eq!(
+            extract_port_from_url("https://example.com/path").unwrap(),
+            443
+        );
+        assert_eq!(
+            extract_port_from_url("http://example.com/path").unwrap(),
+            80
+        );
+        assert_eq!(
+            extract_port_from_url("https://example.com:8443/path").unwrap(),
+            8443
+        );
     }
 }

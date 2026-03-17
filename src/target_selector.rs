@@ -1,6 +1,6 @@
+use rand::Rng;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use rand::Rng;
 
 use crate::config::{LoadDistribution, TargetConfig};
 
@@ -63,6 +63,7 @@ impl TargetSelector {
         self.targets[idx].clone()
     }
 
+    #[allow(dead_code)]
     pub fn target_count(&self) -> usize {
         self.targets.len()
     }

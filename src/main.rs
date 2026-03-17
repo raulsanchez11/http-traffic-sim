@@ -35,7 +35,11 @@ async fn main() -> Result<()> {
 
     // Validate stress testing authorization if needed
     if let Some(ref stress_pattern) = config.stress_pattern {
-        authorization::validate_and_warn(stress_pattern, &config.authorization, &config.safety_limits)?;
+        authorization::validate_and_warn(
+            stress_pattern,
+            &config.authorization,
+            &config.safety_limits,
+        )?;
     }
 
     // Port Discovery Phase (if enabled for any target)
@@ -162,9 +166,10 @@ async fn execute_single_target(config: Config, cancel_token: CancellationToken) 
 }
 
 async fn execute_multi_target(config: Config, cancel_token: CancellationToken) -> Result<()> {
-    let target_group = config.targets.as_ref().ok_or_else(|| {
-        anyhow::anyhow!("Multi-target mode requires targets configuration")
-    })?;
+    let target_group = config
+        .targets
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Multi-target mode requires targets configuration"))?;
 
     // Create target selector
     let targets: Vec<Arc<crate::config::TargetConfig>> = target_group
@@ -197,7 +202,8 @@ async fn execute_multi_target(config: Config, cancel_token: CancellationToken) -
     metrics.reset_start_time();
 
     // Create pattern executor
-    let executor = PatternExecutor::new_multi_target(client, metrics.clone(), config.pattern.clone());
+    let executor =
+        PatternExecutor::new_multi_target(client, metrics.clone(), config.pattern.clone());
 
     // Spawn ctrl+c handler
     let cancel_token_signal = cancel_token.clone();
@@ -231,11 +237,23 @@ async fn execute_multi_target(config: Config, cancel_token: CancellationToken) -
         // Global summary
         let global_stats = Statistics::from_snapshot(&global_snapshot);
         println!("GLOBAL SUMMARY:");
-        println!("Duration:              {:.2}s", global_stats.duration.as_secs_f64());
+        println!(
+            "Duration:              {:.2}s",
+            global_stats.duration.as_secs_f64()
+        );
         println!("Total Requests:        {}", global_stats.total_requests);
-        println!("Successful:            {} ({:.1}%)", global_stats.successful_requests, global_stats.success_rate);
-        println!("Failed:                {} ({:.1}%)", global_stats.failed_requests, global_stats.error_rate);
-        println!("Requests/sec:          {:.2}", global_stats.requests_per_second);
+        println!(
+            "Successful:            {} ({:.1}%)",
+            global_stats.successful_requests, global_stats.success_rate
+        );
+        println!(
+            "Failed:                {} ({:.1}%)",
+            global_stats.failed_requests, global_stats.error_rate
+        );
+        println!(
+            "Requests/sec:          {:.2}",
+            global_stats.requests_per_second
+        );
 
         // Per-target breakdown
         println!("\n{}", "-".repeat(80));
@@ -244,7 +262,8 @@ async fn execute_multi_target(config: Config, cancel_token: CancellationToken) -
 
         for (target_id, snapshot) in per_target_snapshots.iter() {
             let stats = Statistics::from_snapshot(snapshot);
-            let percentage = (stats.total_requests as f64 / global_stats.total_requests as f64) * 100.0;
+            let percentage =
+                (stats.total_requests as f64 / global_stats.total_requests as f64) * 100.0;
 
             println!("\nTarget: {} ({:.1}% of traffic)", target_id, percentage);
             println!("  Total Requests:     {}", stats.total_requests);
@@ -277,9 +296,10 @@ async fn execute_multi_target(config: Config, cancel_token: CancellationToken) -
 }
 
 async fn execute_stress_test(config: Config, cancel_token: CancellationToken) -> Result<()> {
-    let stress_pattern = config.stress_pattern.as_ref().ok_or_else(|| {
-        anyhow::anyhow!("Stress test mode requires stress_pattern configuration")
-    })?;
+    let stress_pattern = config
+        .stress_pattern
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Stress test mode requires stress_pattern configuration"))?;
 
     // Create HTTP client
     let client = HttpClient::new(
@@ -411,47 +431,65 @@ fn print_startup_info(config: &Config) {
     // Show pattern info (if not stress test)
     if mode != ExecutionMode::StressTest {
         match &config.pattern {
-        config::TrafficPattern::Fixed { concurrent, duration_secs, total_requests } => {
-            println!("Pattern:               Fixed Concurrency");
-            println!("Concurrent Clients:    {}", concurrent);
-            if let Some(duration) = duration_secs {
-                println!("Duration:              {}s", duration);
+            config::TrafficPattern::Fixed {
+                concurrent,
+                duration_secs,
+                total_requests,
+            } => {
+                println!("Pattern:               Fixed Concurrency");
+                println!("Concurrent Clients:    {}", concurrent);
+                if let Some(duration) = duration_secs {
+                    println!("Duration:              {}s", duration);
+                }
+                if let Some(total) = total_requests {
+                    println!("Total Requests:        {}", total);
+                }
             }
-            if let Some(total) = total_requests {
-                println!("Total Requests:        {}", total);
+            config::TrafficPattern::RateLimit {
+                rate,
+                duration_secs,
+                total_requests,
+            } => {
+                println!("Pattern:               Rate Limited");
+                println!("Rate:                  {} req/s", rate);
+                if let Some(duration) = duration_secs {
+                    println!("Duration:              {}s", duration);
+                }
+                if let Some(total) = total_requests {
+                    println!("Total Requests:        {}", total);
+                }
+            }
+            config::TrafficPattern::Ramp {
+                from,
+                to,
+                ramp_duration_secs,
+                hold_duration_secs,
+            } => {
+                println!("Pattern:               Ramp-up");
+                println!("From:                  {} clients", from);
+                println!("To:                    {} clients", to);
+                println!("Ramp Duration:         {}s", ramp_duration_secs);
+                if let Some(hold) = hold_duration_secs {
+                    println!("Hold Duration:         {}s", hold);
+                }
+            }
+            config::TrafficPattern::Burst {
+                size,
+                interval_secs,
+                duration_secs,
+                total_bursts,
+            } => {
+                println!("Pattern:               Burst");
+                println!("Burst Size:            {} requests", size);
+                println!("Burst Interval:        {}s", interval_secs);
+                if let Some(duration) = duration_secs {
+                    println!("Duration:              {}s", duration);
+                }
+                if let Some(total) = total_bursts {
+                    println!("Total Bursts:          {}", total);
+                }
             }
         }
-        config::TrafficPattern::RateLimit { rate, duration_secs, total_requests } => {
-            println!("Pattern:               Rate Limited");
-            println!("Rate:                  {} req/s", rate);
-            if let Some(duration) = duration_secs {
-                println!("Duration:              {}s", duration);
-            }
-            if let Some(total) = total_requests {
-                println!("Total Requests:        {}", total);
-            }
-        }
-        config::TrafficPattern::Ramp { from, to, ramp_duration_secs, hold_duration_secs } => {
-            println!("Pattern:               Ramp-up");
-            println!("From:                  {} clients", from);
-            println!("To:                    {} clients", to);
-            println!("Ramp Duration:         {}s", ramp_duration_secs);
-            if let Some(hold) = hold_duration_secs {
-                println!("Hold Duration:         {}s", hold);
-            }
-        }
-        config::TrafficPattern::Burst { size, interval_secs, duration_secs, total_bursts } => {
-            println!("Pattern:               Burst");
-            println!("Burst Size:            {} requests", size);
-            println!("Burst Interval:        {}s", interval_secs);
-            if let Some(duration) = duration_secs {
-                println!("Duration:              {}s", duration);
-            }
-            if let Some(total) = total_bursts {
-                println!("Total Bursts:          {}", total);
-            }
-        }
-    }
     }
 
     println!("{}\n", "=".repeat(80));
@@ -621,8 +659,10 @@ fn apply_discovery_results(
     results: Vec<discovery::DiscoveryResult>,
 ) -> Result<Config> {
     // Create a map for quick lookup
-    let mut results_map: std::collections::HashMap<String, discovery::DiscoveryResult> =
-        results.into_iter().map(|r| (r.target_id.clone(), r)).collect();
+    let mut results_map: std::collections::HashMap<String, discovery::DiscoveryResult> = results
+        .into_iter()
+        .map(|r| (r.target_id.clone(), r))
+        .collect();
 
     // Update single target if applicable
     if let Some(ref discovery_config) = config.target.discovery {
@@ -697,8 +737,8 @@ fn find_best_port(result: &discovery::DiscoveryResult) -> Option<u16> {
 /// Update URL to use a specific port
 fn update_url_port(url: &str, port: u16) -> Result<String> {
     let mut parsed = url::Url::parse(url)?;
-    parsed.set_port(Some(port)).map_err(|_| {
-        anyhow::anyhow!("Failed to set port {} on URL {}", port, url)
-    })?;
+    parsed
+        .set_port(Some(port))
+        .map_err(|_| anyhow::anyhow!("Failed to set port {} on URL {}", port, url))?;
     Ok(parsed.to_string())
 }

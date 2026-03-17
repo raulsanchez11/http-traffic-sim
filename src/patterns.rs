@@ -42,7 +42,6 @@ impl PatternExecutor {
         }
     }
 
-
     pub async fn execute(&self, cancel_token: CancellationToken) -> Result<()> {
         match &self.pattern {
             TrafficPattern::Fixed {
@@ -67,8 +66,14 @@ impl PatternExecutor {
                 ramp_duration_secs,
                 hold_duration_secs,
             } => {
-                self.execute_ramp(*from, *to, *ramp_duration_secs, *hold_duration_secs, cancel_token)
-                    .await
+                self.execute_ramp(
+                    *from,
+                    *to,
+                    *ramp_duration_secs,
+                    *hold_duration_secs,
+                    cancel_token,
+                )
+                .await
             }
             TrafficPattern::Burst {
                 size,
@@ -76,8 +81,14 @@ impl PatternExecutor {
                 duration_secs,
                 total_bursts,
             } => {
-                self.execute_burst(*size, *interval_secs, *duration_secs, *total_bursts, cancel_token)
-                    .await
+                self.execute_burst(
+                    *size,
+                    *interval_secs,
+                    *duration_secs,
+                    *total_bursts,
+                    cancel_token,
+                )
+                .await
             }
         }
     }
@@ -228,8 +239,13 @@ impl PatternExecutor {
             tracing::debug!("Ramping to {} concurrent clients", current_concurrency);
 
             // Run at this concurrency level for step_duration
-            self.execute_fixed(current_concurrency, Some(step_duration.as_secs()), None, cancel_token.clone())
-                .await?;
+            self.execute_fixed(
+                current_concurrency,
+                Some(step_duration.as_secs()),
+                None,
+                cancel_token.clone(),
+            )
+            .await?;
         }
 
         // Hold phase at maximum concurrency
@@ -310,5 +326,4 @@ impl PatternExecutor {
 
         Ok(())
     }
-
 }
