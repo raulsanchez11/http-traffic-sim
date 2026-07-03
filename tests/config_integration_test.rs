@@ -240,3 +240,84 @@ fn test_output_config() {
     assert!(output.console);
     assert!(output.realtime_updates);
 }
+
+// Dedicated unit tests for TrafficPattern::describe() and validate (PR 1)
+#[test]
+fn test_traffic_pattern_describe() {
+    let fixed = TrafficPattern::Fixed {
+        concurrent: 50,
+        duration_secs: Some(60),
+        total_requests: None,
+    };
+    let d = fixed.describe();
+    assert!(d.contains("Pattern:               Fixed Concurrency"));
+    assert!(d.contains("Concurrent Clients:    50"));
+    assert!(d.contains("Duration:              60s"));
+
+    let rate = TrafficPattern::RateLimit {
+        rate: 100,
+        duration_secs: Some(30),
+        total_requests: None,
+    };
+    let d = rate.describe();
+    assert!(d.contains("Pattern:               Rate Limited"));
+    assert!(d.contains("Rate:                  100 req/s"));
+
+    let ramp = TrafficPattern::Ramp {
+        from: 10,
+        to: 100,
+        ramp_duration_secs: 60,
+        hold_duration_secs: Some(30),
+    };
+    let d = ramp.describe();
+    assert!(d.contains("Pattern:               Ramp-up"));
+    assert!(d.contains("From:                  10 clients"));
+    assert!(d.contains("To:                    100 clients"));
+    assert!(d.contains("Ramp Duration:         60s"));
+    assert!(d.contains("Hold Duration:         30s"));
+
+    let burst = TrafficPattern::Burst {
+        size: 100,
+        interval_secs: 5,
+        duration_secs: Some(60),
+        total_bursts: None,
+    };
+    let d = burst.describe();
+    assert!(d.contains("Pattern:               Burst"));
+    assert!(d.contains("Burst Size:            100 requests"));
+}
+
+#[test]
+fn test_traffic_pattern_validate() {
+    let good_rate = TrafficPattern::RateLimit {
+        rate: 10,
+        duration_secs: None,
+        total_requests: None,
+    };
+    assert!(good_rate.validate().is_ok());
+
+    let bad_rate = TrafficPattern::RateLimit {
+        rate: 0,
+        duration_secs: None,
+        total_requests: None,
+    };
+    let err = bad_rate.validate().unwrap_err();
+    assert!(err.to_string().contains("Rate limit must be at least 1 request per second"));
+
+    let good_ramp = TrafficPattern::Ramp {
+        from: 5,
+        to: 10,
+        ramp_duration_secs: 30,
+        hold_duration_secs: None,
+    };
+    assert!(good_ramp.validate().is_ok());
+
+    let bad_ramp = TrafficPattern::Ramp {
+        from: 10,
+        to: 5,
+        ramp_duration_secs: 30,
+        hold_duration_secs: None,
+    };
+    let err = bad_ramp.validate().unwrap_err();
+    assert!(err.to_string().contains("must be <= 'to'"));
+}

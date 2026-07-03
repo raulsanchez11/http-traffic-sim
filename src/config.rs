@@ -199,6 +199,109 @@ impl Default for TrafficPattern {
     }
 }
 
+impl TrafficPattern {
+    /// Canonical validation. Replaces (delegates from) Config::validate_traffic_pattern
+    /// and the rate==0 check in Config::pattern_from_args.
+    pub fn validate(&self) -> Result<()> {
+        match self {
+            TrafficPattern::RateLimit { rate, .. } if *rate == 0 => {
+                anyhow::bail!("Rate limit must be at least 1 request per second");
+            }
+            TrafficPattern::Ramp { from, to, .. } if from > to => {
+                anyhow::bail!("Ramp 'from' ({from}) must be <= 'to' ({to})");
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Human + structured description.
+    /// For TrafficPattern this returns a multi-line block using *exact* text from the
+    /// original printlns inside print_startup_info so that
+    ///   println!("{}", pattern.describe());
+    /// produces byte-identical output.
+    pub fn describe(&self) -> String {
+        match self {
+            TrafficPattern::Fixed {
+                concurrent,
+                duration_secs,
+                total_requests,
+            } => {
+                let mut lines = vec![
+                    "Pattern:               Fixed Concurrency".to_string(),
+                    format!("Concurrent Clients:    {}", concurrent),
+                ];
+                if let Some(duration) = duration_secs {
+                    lines.push(format!("Duration:              {}s", duration));
+                }
+                if let Some(total) = total_requests {
+                    lines.push(format!("Total Requests:        {}", total));
+                }
+                lines.join("\n")
+            }
+            TrafficPattern::RateLimit {
+                rate,
+                duration_secs,
+                total_requests,
+            } => {
+                let mut lines = vec![
+                    "Pattern:               Rate Limited".to_string(),
+                    format!("Rate:                  {} req/s", rate),
+                ];
+                if let Some(duration) = duration_secs {
+                    lines.push(format!("Duration:              {}s", duration));
+                }
+                if let Some(total) = total_requests {
+                    lines.push(format!("Total Requests:        {}", total));
+                }
+                lines.join("\n")
+            }
+            TrafficPattern::Ramp {
+                from,
+                to,
+                ramp_duration_secs,
+                hold_duration_secs,
+            } => {
+                let mut lines = vec![
+                    "Pattern:               Ramp-up".to_string(),
+                    format!("From:                  {} clients", from),
+                    format!("To:                    {} clients", to),
+                    format!("Ramp Duration:         {}s", ramp_duration_secs),
+                ];
+                if let Some(hold) = hold_duration_secs {
+                    lines.push(format!("Hold Duration:         {}s", hold));
+                }
+                lines.join("\n")
+            }
+            TrafficPattern::Burst {
+                size,
+                interval_secs,
+                duration_secs,
+                total_bursts,
+            } => {
+                let mut lines = vec![
+                    "Pattern:               Burst".to_string(),
+                    format!("Burst Size:            {} requests", size),
+                    format!("Burst Interval:        {}s", interval_secs),
+                ];
+                if let Some(duration) = duration_secs {
+                    lines.push(format!("Duration:              {}s", duration));
+                }
+                if let Some(total) = total_bursts {
+                    lines.push(format!("Total Bursts:          {}", total));
+                }
+                lines.join("\n")
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for TrafficPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.describe())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetGroup {
     pub distribution: LoadDistribution,
@@ -291,7 +394,7 @@ pub struct ClientConfig {
     #[serde(default = "default_pool_size")]
     pub pool_max_idle_per_host: usize,
 
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub http2_prior_knowledge: bool,
 }
 
@@ -431,7 +534,12 @@ impl Config {
         // Validate stress testing authorization and safety limits
         result.validate_stress_authorization()?;
 
+        result.validate_traffic_pattern()?;
         Ok(result)
+    }
+
+    fn validate_traffic_pattern(&self) -> Result<()> {
+        self.pattern.validate()
     }
 
     fn load_file(path: &PathBuf) -> Result<ConfigFile> {
@@ -461,12 +569,14 @@ impl Config {
                 .burst_interval
                 .context("--burst-interval is required for burst mode")?;
 
-            return Ok(Some(TrafficPattern::Burst {
+            let pattern = TrafficPattern::Burst {
                 size,
                 interval_secs: interval,
                 duration_secs: args.duration,
                 total_bursts: None,
-            }));
+            };
+            pattern.validate()?;
+            return Ok(Some(pattern));
         }
 
         // Ramp-up mode
@@ -481,30 +591,36 @@ impl Config {
                 .ramp_duration
                 .context("--ramp-duration is required for ramp mode")?;
 
-            return Ok(Some(TrafficPattern::Ramp {
+            let pattern = TrafficPattern::Ramp {
                 from,
                 to,
                 ramp_duration_secs: ramp_duration,
                 hold_duration_secs: args.duration,
-            }));
+            };
+            pattern.validate()?;
+            return Ok(Some(pattern));
         }
 
         // Rate-limited mode
         if let Some(rate) = args.rate {
-            return Ok(Some(TrafficPattern::RateLimit {
+            let pattern = TrafficPattern::RateLimit {
                 rate,
                 duration_secs: args.duration,
                 total_requests: args.requests,
-            }));
+            };
+            pattern.validate()?;
+            return Ok(Some(pattern));
         }
 
         // Fixed concurrency mode
         if let Some(concurrent) = args.concurrent {
-            return Ok(Some(TrafficPattern::Fixed {
+            let pattern = TrafficPattern::Fixed {
                 concurrent,
                 duration_secs: args.duration,
                 total_requests: args.requests,
-            }));
+            };
+            pattern.validate()?;
+            return Ok(Some(pattern));
         }
 
         Ok(None)
