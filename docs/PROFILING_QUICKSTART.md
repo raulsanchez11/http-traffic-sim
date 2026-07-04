@@ -157,7 +157,7 @@ ls target/criterion/*/report/index.html
 
 ## See Also
 
-- [Full Profiling Session](PROFILING_SESSION.md) - Detailed analysis
+- Old profiling sessions are in git history for reference.
 - [Performance Tuning](../PERFORMANCE_TUNING.md) - Optimization guide
 - [End-to-End Benchmarks](END_TO_END_BENCHMARKS.md) - Full benchmarks
 

@@ -477,7 +477,9 @@ cp results.json baseline.json
 
 ## Performance Baselines
 
-### Micro-benchmarks (from PERFORMANCE_BASELINE.md)
+### Micro-benchmarks
+
+(Note: Detailed baseline from 2026 is in git history. Current focus is on end-to-end.)
 
 ```
 Port spec parsing:
@@ -613,7 +615,7 @@ fi
 ---
 
 **See Also**:
-- `PERFORMANCE_BASELINE.md` - Micro-benchmark results
+- (Historical baselines in git history)
 - `PERFORMANCE_TUNING.md` - Optimization guide
 - `./scripts/bench.sh` - Benchmark runner script
 - `./scripts/profile.sh` - Profiling script

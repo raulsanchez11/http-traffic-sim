@@ -835,7 +835,7 @@ Test configs (discovery failure modes):
 | [TROUBLESHOOTING.md](../TROUBLESHOOTING.md) | Common problems and fixes |
 | [PERFORMANCE_TUNING.md](../PERFORMANCE_TUNING.md) | Throughput optimization |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Development workflow |
-| [NO_HARDCODED_LIMITS.md](../NO_HARDCODED_LIMITS.md) | Safety limit philosophy |
+| Safety limits | Configurable via `safety_limits` (no hard-coded defaults) |
 | [PORT_DISCOVERY_QUICKSTART.md](../PORT_DISCOVERY_QUICKSTART.md) | Discovery quick reference |
 | [docs/END_TO_END_BENCHMARKS.md](END_TO_END_BENCHMARKS.md) | Benchmark scenarios |
 | [docs/PROFILING_QUICKSTART.md](PROFILING_QUICKSTART.md) | Profiling guide |
