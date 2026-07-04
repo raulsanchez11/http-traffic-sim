@@ -305,7 +305,7 @@ fi
 ## Need Help?
 
 - See `README.md` for full documentation
-- See `PHASE3_IMPLEMENTATION.md` for technical details
+- See `ARCHITECTURE.md` or `docs/DOCUMENTATION.md` for technical details
 - Check example configs in `config.discovery-*.yaml`
 - Report issues on GitHub
 

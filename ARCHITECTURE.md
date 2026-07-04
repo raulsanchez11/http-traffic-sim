@@ -85,7 +85,7 @@
 
 **Key Components**:
 - `Config`: Main configuration struct
-- `TargetConfig`: Per-target settings (URL, method, headers, body)
+- `TargetConfig`: Per-target settings (URL, method, headers, body). Includes `effective_id(index)` helper for consistent ID generation.
 - `TrafficPattern`: Load pattern definitions (Fixed, RateLimit, Ramp, Burst)
 - `StressPattern`: Stress testing patterns (ConnectionFlood, Slowloris, etc.)
 - `LoadDistribution`: Multi-target distribution strategies
@@ -760,19 +760,29 @@ Report in final statistics
 
 ## Extensibility
 
+The design centralizes behavior on the data types themselves, making common operations (validation, human-readable descriptions, ID handling) available directly on the structs/enums.
+
+### Working with Patterns (Library Use)
+
+- `TrafficPattern` and `StressPattern` implement:
+  - `.validate()` — central validation logic
+  - `.describe()` (and `Display`) — human-readable description (used for startup info and stress warnings)
+- `TargetConfig::effective_id(index: Option<usize>)` — returns configured ID or a sensible default (`"target"` or `"target-N"`)
+
 ### Adding New Traffic Patterns
 
 1. Add variant to `TrafficPattern` enum (config.rs)
 2. Implement execution logic in `PatternExecutor` (patterns.rs)
-3. Add configuration parsing
-4. Add tests
+3. Implement `.validate()` and `.describe()` on the new variant (in the `impl TrafficPattern` block)
+4. Add configuration parsing / tests as needed
 
 ### Adding New Stress Patterns
 
 1. Add variant to `StressPattern` enum (config.rs)
 2. Implement execution in `StressExecutor` (stress.rs)
-3. Update authorization validation (authorization.rs)
-4. Add safety limit checks if applicable
+3. Implement `.validate_against(&self, limits: &SafetyLimits)` and `.describe()` on the new variant
+4. Update safety limit handling and authorization display if applicable
+5. Add tests
 
 ### Adding New Distribution Strategies
 
@@ -782,12 +792,12 @@ Report in final statistics
 
 ## Testing Strategy
 
-### Unit Tests (45 tests)
+### Unit Tests (current count in tests + src doctests)
 - Per-module functionality
 - Edge cases and error conditions
 - Located in `src/` files
 
-### Integration Tests (54 tests)
+### Integration Tests (current count)
 - Cross-module functionality
 - Real-world scenarios
 - Located in `tests/` directory

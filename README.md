@@ -4,6 +4,8 @@ A high-performance Rust-based HTTP/HTTPS benchmarking tool that simulates client
 
 > **Full documentation:** [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) — complete reference for configuration, execution modes, patterns, discovery, stress testing, metrics, architecture, and library API.
 
+**Note:** TrafficPattern, StressPattern, and TargetConfig expose `.validate()`, `.describe()`, and `.effective_id()` methods for library users (see Library API section).
+
 ## Features
 
 ### Phase 1: Core Load Testing
@@ -759,18 +761,6 @@ cargo run --release -- --config config.stress-requestflood.example.yaml
   - Test targets and setup
   - Result analysis
   - Continuous benchmarking
-
-### Technical Documentation
-
-- **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** - Micro-benchmark results
-  - Baseline performance measurements
-  - Hot path analysis
-  - 56% optimization verified
-
-- **[PHASE4_FINAL_REPORT.md](PHASE4_FINAL_REPORT.md)** - Development report
-  - Project status and metrics
-  - Test coverage (141 tests, 100% pass rate)
-  - Phase completion tracking
 
 ### Quick Links
 

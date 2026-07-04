@@ -586,16 +586,15 @@ pub enum TrafficPattern {
     },
 }
 
-// 2. Implement in patterns.rs
+// 2. Implement behavior on the enum (recommended)
+impl TrafficPattern {
+    pub fn validate(&self) -> Result<()> { /* ... */ }
+    pub fn describe(&self) -> String { /* ... */ }
+}
+
+// 3. Implement execution in patterns.rs (dispatch + private method)
 impl PatternExecutor {
-    async fn execute_new_pattern(
-        &self,
-        param1: usize,
-        param2: u64,
-        cancel_token: CancellationToken,
-    ) -> Result<()> {
-        // Implementation
-    }
+    async fn execute_new_pattern(...) { /* ... */ }
 
     pub async fn execute(&self, cancel_token: CancellationToken) -> Result<()> {
         match &self.pattern {
@@ -607,16 +606,7 @@ impl PatternExecutor {
     }
 }
 
-// 3. Add tests
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_new_pattern() {
-        // Test implementation
-    }
-}
-
-// 4. Update documentation
+// 4. Add tests + update documentation
 /// New traffic pattern that does X.
 ///
 /// This pattern is useful for Y scenarios.

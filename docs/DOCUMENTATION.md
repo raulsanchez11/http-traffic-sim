@@ -243,6 +243,11 @@ output:          # Reporting settings
 
 Tagged by `type`: `fixed`, `ratelimit`, `ramp`, `burst`.
 
+When using these types from Rust code, prefer the methods on the enum:
+
+- `.validate()` — performs validation
+- `.describe()` — returns the same multi-line description shown at startup (also implements `Display`)
+
 #### Fixed
 
 ```yaml
@@ -512,6 +517,11 @@ When discovery finds open ports, the tool picks the best port (HTTPS > HTTP > fi
 | Pipeline abuse | `pipelineabuse` | `requests_per_connection`, `concurrent_connections` | Multiple HTTP/1.1 requests per connection |
 | Slow read | `slowread` | `connections`, `read_rate_bps`, `duration_secs` | Slow response consumption |
 
+When using `StressPattern` from Rust, call:
+
+- `.describe()` — human-readable string used in warnings and startup output
+- `.validate_against(&safety_limits)` — safety enforcement
+
 ### Example
 
 ```yaml
@@ -688,6 +698,29 @@ use http_traffic_sim::{
     MetricsCollector, MultiTargetMetrics, RequestRecorder,
     Statistics, run,
 };
+```
+
+### Pattern and Target helpers (recommended for library use)
+
+`TrafficPattern` and `StressPattern` provide canonical behavior:
+
+```rust
+let pattern = TrafficPattern::RateLimit { rate: 100, .. };
+pattern.validate()?;                    // central validation
+println!("{}", pattern.describe());     // or format!("{}", pattern)
+```
+
+`StressPattern` also has safety-limit validation:
+
+```rust
+stress_pattern.validate_against(&safety_limits)?;
+```
+
+`TargetConfig` centralizes ID handling:
+
+```rust
+let id = target.effective_id(Some(index));  // "target" or "target-N" or custom id
+target.id = target.effective_id(Some(i));
 ```
 
 ### Example: custom metrics loop
