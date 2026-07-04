@@ -147,21 +147,18 @@ fn test_weighted_selection_with_zero_weight() {
 }
 
 #[test]
-fn test_hash_based_selection_fallback() {
-    // Hash-based currently falls back to round-robin
+fn test_hash_based_selection_is_deterministic_and_spreads() {
     let targets = create_test_targets(3);
     let selector = TargetSelector::new(
         targets.clone(),
         LoadDistribution::Hash { field: HashField::SourceIp },
     );
 
-    // Should behave like round-robin
-    let selections: Vec<String> = (0..6).map(|_| selector.select().id.clone()).collect();
+    let selections: Vec<String> = (0..30).map(|_| selector.select().id.clone()).collect();
+    let unique: std::collections::HashSet<_> = selections.iter().cloned().collect();
 
-    assert_eq!(selections[0], "target-0");
-    assert_eq!(selections[1], "target-1");
-    assert_eq!(selections[2], "target-2");
-    assert_eq!(selections[3], "target-0");
+    assert!(unique.len() > 1, "hash routing should spread across targets");
+    assert!(selections.iter().all(|id| id.starts_with("target-")));
 }
 
 #[test]

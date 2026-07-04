@@ -5,7 +5,7 @@ fn bench_port_spec_single(c: &mut Criterion) {
     c.bench_function("port_spec_single", |b| {
         b.iter(|| {
             let spec = PortSpec::Single(black_box(8080));
-            black_box(spec.to_vec())
+            black_box(spec.to_vec().unwrap())
         })
     });
 }
@@ -14,7 +14,7 @@ fn bench_port_spec_list(c: &mut Criterion) {
     c.bench_function("port_spec_list", |b| {
         b.iter(|| {
             let spec = PortSpec::List(vec![80, 443, 8080, 8443]);
-            black_box(spec.to_vec())
+            black_box(spec.to_vec().unwrap())
         })
     });
 }
@@ -26,7 +26,7 @@ fn bench_port_spec_range_small(c: &mut Criterion) {
                 start: black_box(8000),
                 end: black_box(8010),
             };
-            black_box(spec.to_vec())
+            black_box(spec.to_vec().unwrap())
         })
     });
 }
@@ -38,7 +38,7 @@ fn bench_port_spec_range_large(c: &mut Criterion) {
                 start: black_box(8000),
                 end: black_box(9000),
             };
-            black_box(spec.to_vec())
+            black_box(spec.to_vec().unwrap())
         })
     });
 }

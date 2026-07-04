@@ -1,79 +1,16 @@
 //! HTTP client module for executing requests and stress testing patterns.
-//!
-//! This module provides HTTP/HTTPS client functionality with support for:
-//!
-//! - Single-target and multi-target load testing
-//! - Standard HTTP request execution with metrics
-//! - Connection pooling and keep-alive
-//! - Stress testing patterns (slowloris, slow read, connection hold)
-//! - Error categorization and detailed reporting
-//!
-//! # Examples
-//!
-//! ```rust,no_run
-//! use http_traffic_sim::client::HttpClient;
-//! use http_traffic_sim::config::TargetConfig;
-//! use std::time::Duration;
-//!
-//! # async fn example() -> anyhow::Result<()> {
-//! // Create a single-target client
-//! let target = TargetConfig::default();
-//! let client = HttpClient::new(
-//!     target,
-//!     Duration::from_secs(30),
-//!     128
-//! )?;
-//!
-//! // Execute a request
-//! let result = client.execute().await;
-//! # Ok(())
-//! # }
-//! ```
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::{Client, Method, Request};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-use crate::config::TargetConfig;
+use crate::config::{ClientConfig, TargetConfig};
 use crate::metrics::RequestResult;
 use crate::target_selector::TargetSelector;
 
-/// HTTP client for executing load tests and stress tests.
-///
-/// The client supports both single-target and multi-target modes,
-/// connection pooling, and various stress testing patterns.
-///
-/// # Features
-///
-/// - Connection pooling with configurable limits
-/// - TCP keep-alive for long-running tests
-/// - Multi-target load distribution
-/// - Stress testing capabilities (slowloris, slow read, etc.)
-/// - Detailed metrics collection
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use http_traffic_sim::client::HttpClient;
-/// use http_traffic_sim::config::TargetConfig;
-/// use std::time::Duration;
-///
-/// # async fn example() -> anyhow::Result<()> {
-/// let target = TargetConfig::default();
-/// let client = HttpClient::new(
-///     target,
-///     Duration::from_secs(30),
-///     128
-/// )?;
-///
-/// let result = client.execute().await;
-/// println!("Status: {:?}", result.status_code);
-/// # Ok(())
-/// # }
-/// ```
 #[derive(Clone)]
 pub struct HttpClient {
     client: Client,
@@ -86,158 +23,61 @@ enum ClientMode {
     MultiTarget { selector: Arc<TargetSelector> },
 }
 
-impl HttpClient {
-    /// Creates a new HTTP client for single-target testing.
-    ///
-    /// # Arguments
-    ///
-    /// * `target` - Target configuration (URL, method, headers, body)
-    /// * `timeout` - Request timeout duration
-    /// * `pool_max_idle` - Maximum idle connections per host in pool
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use http_traffic_sim::client::HttpClient;
-    /// use http_traffic_sim::config::TargetConfig;
-    /// use std::time::Duration;
-    ///
-    /// # fn example() -> anyhow::Result<()> {
-    /// let target = TargetConfig::default();
-    /// let client = HttpClient::new(
-    ///     target,
-    ///     Duration::from_secs(30),
-    ///     128
-    /// )?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn new(target: TargetConfig, timeout: Duration, pool_max_idle: usize) -> Result<Self> {
-        let client = Client::builder()
-            .timeout(timeout)
-            .pool_max_idle_per_host(pool_max_idle)
-            .tcp_keepalive(Some(Duration::from_secs(60)))
-            .build()?;
+fn build_reqwest_client(client_config: &ClientConfig) -> Result<Client> {
+    let timeout = Duration::from_secs(client_config.timeout_secs);
+    let mut builder = Client::builder()
+        .timeout(timeout)
+        .pool_max_idle_per_host(client_config.pool_max_idle_per_host)
+        .tcp_keepalive(Some(Duration::from_secs(60)));
 
+    if client_config.http2_prior_knowledge {
+        builder = builder.http2_prior_knowledge();
+    }
+
+    builder.build().map_err(Into::into)
+}
+
+impl HttpClient {
+    pub fn new(target: TargetConfig, client_config: &ClientConfig) -> Result<Self> {
         Ok(Self {
-            client,
+            client: build_reqwest_client(client_config)?,
             mode: ClientMode::SingleTarget {
                 target: Arc::new(target),
             },
         })
     }
 
-    /// Creates a new HTTP client for multi-target testing.
-    ///
-    /// Uses a target selector to distribute load across multiple targets
-    /// according to the configured distribution strategy.
-    ///
-    /// # Arguments
-    ///
-    /// * `selector` - Target selector for load distribution
-    /// * `timeout` - Request timeout duration
-    /// * `pool_max_idle` - Maximum idle connections per host in pool
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use http_traffic_sim::client::HttpClient;
-    /// use http_traffic_sim::target_selector::TargetSelector;
-    /// use std::sync::Arc;
-    /// use std::time::Duration;
-    ///
-    /// # fn example() -> anyhow::Result<()> {
-    /// # let targets = vec![];
-    /// # let distribution = http_traffic_sim::config::LoadDistribution::RoundRobin;
-    /// let selector = Arc::new(TargetSelector::new(targets, distribution));
-    /// let client = HttpClient::new_multi_target(
-    ///     selector,
-    ///     Duration::from_secs(30),
-    ///     128
-    /// )?;
-    /// # Ok(())
-    /// # }
-    /// ```
     pub fn new_multi_target(
         selector: Arc<TargetSelector>,
-        timeout: Duration,
-        pool_max_idle: usize,
+        client_config: &ClientConfig,
     ) -> Result<Self> {
-        let client = Client::builder()
-            .timeout(timeout)
-            .pool_max_idle_per_host(pool_max_idle)
-            .tcp_keepalive(Some(Duration::from_secs(60)))
-            .build()?;
-
         Ok(Self {
-            client,
+            client: build_reqwest_client(client_config)?,
             mode: ClientMode::MultiTarget { selector },
         })
     }
 
-    /// Executes a single HTTP request and returns timing metrics.
-    ///
-    /// This is the main method for standard load testing. It:
-    /// - Selects a target (single or from multi-target pool)
-    /// - Builds the HTTP request with method, headers, and body
-    /// - Executes the request and measures response time
-    /// - Categorizes errors for detailed reporting
-    ///
-    /// # Returns
-    ///
-    /// Returns a `RequestResult` containing:
-    /// - Duration of the request
-    /// - HTTP status code (if successful)
-    /// - Success/failure indication
-    /// - Error message (if failed)
-    /// - Target ID for multi-target tracking
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use http_traffic_sim::client::HttpClient;
-    /// use http_traffic_sim::config::TargetConfig;
-    /// use std::time::Duration;
-    ///
-    /// # async fn example() -> anyhow::Result<()> {
-    /// # let target = TargetConfig::default();
-    /// let client = HttpClient::new(target, Duration::from_secs(30), 128)?;
-    /// let result = client.execute().await;
-    ///
-    /// if result.success {
-    ///     println!("Request succeeded in {:?}", result.duration);
-    /// } else {
-    ///     println!("Request failed: {:?}", result.error);
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn execute(&self) -> RequestResult {
-        let start = Instant::now();
-
-        // Select target based on mode
-        let target = match &self.mode {
+    pub fn selected_target(&self) -> Arc<TargetConfig> {
+        match &self.mode {
             ClientMode::SingleTarget { target } => target.clone(),
             ClientMode::MultiTarget { selector } => selector.select(),
-        };
+        }
+    }
 
-        // Build request
+    pub async fn execute(&self) -> RequestResult {
+        let start = Instant::now();
+        let target = self.selected_target();
         let method = Method::from_bytes(target.method.as_bytes()).unwrap_or(Method::GET);
 
         let mut request_builder = self.client.request(method, &target.url);
-
-        // Add headers
         for (key, value) in &target.headers {
             request_builder = request_builder.header(key, value);
         }
-
-        // Add body if present
         if let Some(body) = &target.body {
             request_builder = request_builder.body(body.clone());
         }
 
-        // Execute request and measure
-        let result = match request_builder.build() {
+        match request_builder.build() {
             Ok(request) => self.send_and_measure(request, start, &target.id).await,
             Err(e) => RequestResult {
                 start_time: start,
@@ -247,9 +87,7 @@ impl HttpClient {
                 error: Some(format!("Failed to build request: {}", e)),
                 target_id: target.id.clone(),
             },
-        };
-
-        result
+        }
     }
 
     async fn send_and_measure(
@@ -301,117 +139,156 @@ impl HttpClient {
         }
     }
 
-    /// Executes a request and holds the connection open for a specified duration.
-    ///
-    /// Used for connection flood stress testing patterns. Opens a connection,
-    /// makes a request, then holds the connection open to consume server resources.
-    ///
-    /// # Arguments
-    ///
-    /// * `hold_duration` - How long to keep the connection open after the request
-    ///
-    /// # Returns
-    ///
-    /// Returns the request result from the initial execution.
-    ///
-    /// # Note
-    ///
-    /// This is a stress testing feature and requires proper authorization.
     pub async fn execute_and_hold(&self, hold_duration: Duration) -> RequestResult {
-        let result = self.execute().await;
+        let start = Instant::now();
+        let target = self.selected_target();
 
-        // Hold for the specified duration
-        tokio::time::sleep(hold_duration).await;
-
-        result
+        match self
+            .hold_raw_connection(&target.url, hold_duration)
+            .await
+        {
+            Ok(()) => RequestResult {
+                start_time: start,
+                duration: start.elapsed(),
+                status_code: None,
+                success: true,
+                error: None,
+                target_id: target.id.clone(),
+            },
+            Err(e) => RequestResult {
+                start_time: start,
+                duration: start.elapsed(),
+                status_code: None,
+                success: false,
+                error: Some(e.to_string()),
+                target_id: target.id.clone(),
+            },
+        }
     }
 
-    /// Opens a raw TCP connection and sends partial HTTP headers (slowloris attack).
-    ///
-    /// Used for slowloris stress testing patterns. Opens a TCP connection and sends
-    /// incomplete HTTP headers, holding the connection open without completing the request.
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - Target URL to connect to
-    /// * `partial_headers` - Incomplete HTTP headers to send
-    ///
-    /// # Behavior
-    ///
-    /// - Parses URL to extract host and port
-    /// - Opens raw TCP connection
-    /// - Sends partial headers without completing request
-    /// - Holds connection open for 5 minutes
-    ///
-    /// # Note
-    ///
-    /// This is a stress testing feature and requires proper authorization.
-    /// Only use against systems you own or have explicit permission to test.
     pub async fn send_partial_request(&self, url: &str, partial_headers: &str) -> Result<()> {
-        // Parse URL to extract host and port
-        let parsed_url = url::Url::parse(url)?;
-        let host = parsed_url
-            .host_str()
-            .ok_or_else(|| anyhow::anyhow!("Invalid host"))?;
-        let port = parsed_url
-            .port()
-            .unwrap_or(if parsed_url.scheme() == "https" {
-                443
-            } else {
-                80
-            });
-
-        // Open TCP connection
-        let addr = format!("{}:{}", host, port);
-        let mut stream = TcpStream::connect(&addr).await?;
-
-        // Send partial headers
+        let (host, port) = parse_host_port(url)?;
+        let mut stream = TcpStream::connect(format!("{host}:{port}")).await?;
         stream.write_all(partial_headers.as_bytes()).await?;
         stream.flush().await?;
-
-        // Keep connection open but don't complete the request
-        tokio::time::sleep(Duration::from_secs(300)).await; // Hold for 5 minutes
-
+        tokio::time::sleep(Duration::from_secs(300)).await;
         Ok(())
     }
 
-    /// Executes a request and reads the response very slowly (slow read attack).
-    ///
-    /// Used for slow read stress testing patterns. Makes a request and then
-    /// deliberately reads the response data very slowly to tie up server resources.
-    ///
-    /// # Arguments
-    ///
-    /// * `_read_rate_bps` - Target read rate in bytes per second (currently unused)
-    ///
-    /// # Behavior
-    ///
-    /// - Executes HTTP request
-    /// - Reads response chunks with 100ms delays between reads
-    /// - Holds connection open while slowly consuming response
-    ///
-    /// # Note
-    ///
-    /// This is a stress testing feature and requires proper authorization.
-    /// Only use against systems you own or have explicit permission to test.
-    pub async fn slow_read(&self, _read_rate_bps: usize) -> Result<()> {
-        let target = match &self.mode {
-            ClientMode::SingleTarget { target } => target.clone(),
-            ClientMode::MultiTarget { selector } => selector.select(),
-        };
+    pub async fn execute_slow_post(
+        &self,
+        bytes_per_second: usize,
+        payload_size: usize,
+    ) -> RequestResult {
+        let start = Instant::now();
+        let target = self.selected_target();
+        let rate = bytes_per_second.max(1);
+        let delay = Duration::from_secs_f64(1.0 / rate as f64);
 
+        let result = async {
+            let (host, port) = parse_host_port(&target.url)?;
+            let mut stream = TcpStream::connect(format!("{host}:{port}")).await?;
+            let path = url::Url::parse(&target.url)?.path().to_string();
+            let headers = format!(
+                "POST {path} HTTP/1.1\r\nHost: {host}\r\nContent-Length: {payload_size}\r\nContent-Type: application/octet-stream\r\n\r\n"
+            );
+            stream.write_all(headers.as_bytes()).await?;
+
+            let mut sent = 0usize;
+            while sent < payload_size {
+                stream.write_all(b"x").await?;
+                sent += 1;
+                tokio::time::sleep(delay).await;
+            }
+            Ok::<(), anyhow::Error>(())
+        }
+        .await;
+
+        RequestResult {
+            start_time: start,
+            duration: start.elapsed(),
+            status_code: None,
+            success: result.is_ok(),
+            error: result.err().map(|e| e.to_string()),
+            target_id: target.id.clone(),
+        }
+    }
+
+    pub async fn execute_large_payload(&self, size_mb: usize) -> RequestResult {
+        let start = Instant::now();
+        let target = self.selected_target();
+        let payload = vec![b'x'; size_mb.saturating_mul(1024 * 1024).max(1)];
+
+        let mut request_builder = self
+            .client
+            .request(Method::POST, &target.url)
+            .body(payload);
+        for (key, value) in &target.headers {
+            request_builder = request_builder.header(key, value);
+        }
+
+        match request_builder.build() {
+            Ok(request) => self.send_and_measure(request, start, &target.id).await,
+            Err(e) => RequestResult {
+                start_time: start,
+                duration: start.elapsed(),
+                status_code: None,
+                success: false,
+                error: Some(format!("Failed to build large payload request: {}", e)),
+                target_id: target.id.clone(),
+            },
+        }
+    }
+
+    pub async fn execute_pipelined(&self, requests_per_connection: usize) -> RequestResult {
+        let start = Instant::now();
+        let target = self.selected_target();
+
+        let result = async {
+            let (host, port) = parse_host_port(&target.url)?;
+            let mut stream = TcpStream::connect(format!("{host}:{port}")).await?;
+            let path = url::Url::parse(&target.url)?.path().to_string();
+            let mut pipeline = String::new();
+            for _ in 0..requests_per_connection.max(1) {
+                pipeline.push_str(&format!(
+                    "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: keep-alive\r\n\r\n"
+                ));
+            }
+            stream.write_all(pipeline.as_bytes()).await?;
+            stream.flush().await?;
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf).await?;
+            Ok::<(), anyhow::Error>(())
+        }
+        .await;
+
+        RequestResult {
+            start_time: start,
+            duration: start.elapsed(),
+            status_code: None,
+            success: result.is_ok(),
+            error: result.err().map(|e| e.to_string()),
+            target_id: target.id.clone(),
+        }
+    }
+
+    pub async fn slow_read(&self, read_rate_bps: usize) -> Result<()> {
+        let target = self.selected_target();
         let method = Method::from_bytes(target.method.as_bytes()).unwrap_or(Method::GET);
-
         let request = self.client.request(method, &target.url).build()?;
+        let rate = read_rate_bps.max(1);
+        let delay = Duration::from_secs_f64(8.0 / rate as f64).max(Duration::from_millis(1));
 
         if let Ok(mut response) = self.client.execute(request).await {
             loop {
                 match response.chunk().await {
-                    Ok(Some(_chunk)) => {
-                        // Simulate slow reading
-                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    Ok(Some(chunk)) => {
+                        let chunk_delay =
+                            Duration::from_secs_f64(chunk.len() as f64 / rate as f64)
+                                .max(delay);
+                        tokio::time::sleep(chunk_delay).await;
                     }
-                    Ok(None) => break, // End of stream
+                    Ok(None) => break,
                     Err(_) => break,
                 }
             }
@@ -419,4 +296,40 @@ impl HttpClient {
 
         Ok(())
     }
+
+    async fn hold_raw_connection(&self, url: &str, hold_duration: Duration) -> Result<()> {
+        let (host, port) = parse_host_port(url)?;
+        let parsed = url::Url::parse(url)?;
+        let path = if parsed.path().is_empty() {
+            "/"
+        } else {
+            parsed.path()
+        };
+
+        let mut stream = TcpStream::connect(format!("{host}:{port}")).await?;
+        let partial = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\n");
+        stream.write_all(partial.as_bytes()).await?;
+        stream.flush().await?;
+        tokio::time::sleep(hold_duration).await;
+        Ok(())
+    }
+}
+
+// Note: some duplication remains in raw TCP URL parsing for stress attack methods
+// (see execute_slow_post, execute_pipelined, etc.). parse_host_port is shared but
+// full request construction logic is bespoke per attack type.
+fn parse_host_port(url: &str) -> Result<(String, u16)> {
+    let parsed = url::Url::parse(url).with_context(|| format!("Invalid URL: {url}"))?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("URL has no host: {url}"))?
+        .to_string();
+    let port = parsed.port().unwrap_or_else(|| {
+        if parsed.scheme() == "https" {
+            443
+        } else {
+            80
+        }
+    });
+    Ok((host, port))
 }

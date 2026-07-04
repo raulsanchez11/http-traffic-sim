@@ -162,7 +162,7 @@ impl Statistics {
     /// # }
     /// ```
     pub fn from_snapshot(snapshot: &MetricsSnapshot) -> Self {
-        let latency = Self::calculate_latency_stats(&snapshot.latencies_us);
+        let latency = Self::calculate_latency_stats(&snapshot.latency_hist);
 
         let mut status_codes: Vec<(u16, usize)> = snapshot
             .status_codes
@@ -194,8 +194,8 @@ impl Statistics {
         }
     }
 
-    fn calculate_latency_stats(latencies_us: &[u64]) -> LatencyStats {
-        if latencies_us.is_empty() {
+    fn calculate_latency_stats(hist: &Histogram<u64>) -> LatencyStats {
+        if hist.len() == 0 {
             return LatencyStats {
                 min_ms: 0.0,
                 max_ms: 0.0,
@@ -209,16 +209,6 @@ impl Statistics {
             };
         }
 
-        // Create histogram with auto-resizing (1 microsecond to 1 hour)
-        let mut hist = Histogram::<u64>::new_with_bounds(1, 3_600_000_000, 3)
-            .expect("Failed to create histogram");
-
-        // Record all latencies
-        for &latency in latencies_us {
-            let _ = hist.record(latency);
-        }
-
-        // Convert microseconds to milliseconds
         let us_to_ms = |us: u64| us as f64 / 1000.0;
 
         LatencyStats {

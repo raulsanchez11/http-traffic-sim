@@ -39,10 +39,12 @@
 //! ```
 
 use rand::Rng;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use crate::config::{LoadDistribution, TargetConfig};
+use crate::config::{HashField, LoadDistribution, TargetConfig};
 
 /// Manages target selection for multi-target load testing.
 ///
@@ -168,11 +170,7 @@ impl TargetSelector {
             LoadDistribution::RoundRobin => self.round_robin(),
             LoadDistribution::Weighted { weights } => self.weighted(weights),
             LoadDistribution::Random => self.random(),
-            LoadDistribution::Hash { field: _ } => {
-                // For now, hash-based routing falls back to round-robin
-                // Full implementation would hash request fields
-                self.round_robin()
-            }
+            LoadDistribution::Hash { field } => self.hash_select(field),
         }
     }
 
@@ -205,7 +203,19 @@ impl TargetSelector {
         self.targets[idx].clone()
     }
 
-    #[allow(dead_code)]
+    fn hash_select(&self, field: &HashField) -> Arc<TargetConfig> {
+        let request_id = self.counter.fetch_add(1, Ordering::Relaxed);
+        let mut hasher = DefaultHasher::new();
+        match field {
+            HashField::SourceIp => "source-ip".hash(&mut hasher),
+            HashField::SessionId => "session-id".hash(&mut hasher),
+        }
+        request_id.hash(&mut hasher);
+        let idx = (hasher.finish() as usize) % self.targets.len();
+        self.targets[idx].clone()
+    }
+
+    #[allow(dead_code)] // kept for potential debugging / API
     pub fn target_count(&self) -> usize {
         self.targets.len()
     }

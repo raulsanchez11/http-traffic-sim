@@ -5,7 +5,7 @@ use http_traffic_sim::discovery::*;
 #[test]
 fn test_port_spec_single() {
     let spec = PortSpec::Single(8080);
-    let ports = spec.to_vec();
+    let ports = spec.to_vec().unwrap();
 
     assert_eq!(ports.len(), 1);
     assert_eq!(ports[0], 8080);
@@ -14,7 +14,7 @@ fn test_port_spec_single() {
 #[test]
 fn test_port_spec_list() {
     let spec = PortSpec::List(vec![80, 443, 8080, 8443]);
-    let ports = spec.to_vec();
+    let ports = spec.to_vec().unwrap();
 
     assert_eq!(ports.len(), 4);
     assert_eq!(ports, vec![80, 443, 8080, 8443]);
@@ -26,7 +26,7 @@ fn test_port_spec_range_small() {
         start: 8000,
         end: 8005,
     };
-    let ports = spec.to_vec();
+    let ports = spec.to_vec().unwrap();
 
     assert_eq!(ports.len(), 6);
     assert_eq!(ports, vec![8000, 8001, 8002, 8003, 8004, 8005]);
@@ -38,7 +38,7 @@ fn test_port_spec_range_large() {
         start: 8000,
         end: 8100,
     };
-    let ports = spec.to_vec();
+    let ports = spec.to_vec().unwrap();
 
     assert_eq!(ports.len(), 101);
     assert_eq!(ports.first().unwrap(), &8000);
@@ -227,13 +227,13 @@ fn test_discovery_result_structure() {
 fn test_port_spec_range_edge_cases() {
     // Single port range
     let spec = PortSpec::Range { start: 8080, end: 8080 };
-    let ports = spec.to_vec();
+    let ports = spec.to_vec().unwrap();
     assert_eq!(ports.len(), 1);
     assert_eq!(ports[0], 8080);
 
     // Two port range
     let spec = PortSpec::Range { start: 80, end: 81 };
-    let ports = spec.to_vec();
+    let ports = spec.to_vec().unwrap();
     assert_eq!(ports.len(), 2);
     assert_eq!(ports, vec![80, 81]);
 }
@@ -242,7 +242,7 @@ fn test_port_spec_range_edge_cases() {
 fn test_port_spec_list_deduplication_not_automatic() {
     // Port lists don't automatically deduplicate
     let spec = PortSpec::List(vec![80, 80, 443, 443]);
-    let ports = spec.to_vec();
+    let ports = spec.to_vec().unwrap();
     assert_eq!(ports.len(), 4); // Duplicates preserved
 }
 

@@ -155,6 +155,23 @@ impl Default for TargetConfig {
     }
 }
 
+impl TargetConfig {
+    /// Returns the configured id, or a generated default based on index.
+    /// - index=None  => "target"   (single-target cases)
+    /// - index=Some(i) => "target-{i}" (multi-target)
+    /// If id is already set (non-empty), returns it as-is.
+    pub fn effective_id(&self, index: Option<usize>) -> String {
+        if !self.id.is_empty() {
+            self.id.clone()
+        } else {
+            match index {
+                Some(i) => format!("target-{}", i),
+                None => "target".to_string(),
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum TrafficPattern {
@@ -360,6 +377,155 @@ pub enum StressPattern {
         read_rate_bps: usize,
         duration_secs: u64,
     },
+}
+
+impl StressPattern {
+    /// Human description (canonical, used for auth warnings and startup info).
+    /// Used for auth warnings and startup info.
+    pub fn describe(&self) -> String {
+        match self {
+            StressPattern::ConnectionFlood {
+                connections_per_second,
+                hold_time_ms,
+                duration_secs,
+            } => {
+                format!(
+                    "Connection Flood - {} conn/s, hold {}ms, duration {}s",
+                    connections_per_second, hold_time_ms, duration_secs
+                )
+            }
+            StressPattern::Slowloris {
+                connections,
+                headers_per_second,
+                duration_secs,
+            } => {
+                format!(
+                    "Slowloris - {} connections, {:.2} headers/s, duration {}s",
+                    connections, headers_per_second, duration_secs
+                )
+            }
+            StressPattern::SlowPost {
+                connections,
+                bytes_per_second,
+                payload_size,
+            } => {
+                format!(
+                    "Slow POST - {} connections, {} bytes/s, payload {} bytes",
+                    connections, bytes_per_second, payload_size
+                )
+            }
+            StressPattern::RequestFlood {
+                target_rps,
+                duration_secs,
+            } => {
+                format!(
+                    "Request Flood - {} req/s, duration {}s",
+                    target_rps, duration_secs
+                )
+            }
+            StressPattern::LargePayload {
+                size_mb,
+                concurrent,
+                duration_secs,
+            } => {
+                format!(
+                    "Large Payload - {} MB, {} concurrent, duration {}s",
+                    size_mb, concurrent, duration_secs
+                )
+            }
+            StressPattern::PipelineAbuse {
+                requests_per_connection,
+                concurrent_connections,
+            } => {
+                format!(
+                    "Pipeline Abuse - {} req/conn, {} connections",
+                    requests_per_connection, concurrent_connections
+                )
+            }
+            StressPattern::SlowRead {
+                connections,
+                read_rate_bps,
+                duration_secs,
+            } => {
+                format!(
+                    "Slow Read - {} connections, {} bytes/s, duration {}s",
+                    connections, read_rate_bps, duration_secs
+                )
+            }
+        }
+    }
+
+    /// Validate the pattern against configured safety limits.
+    /// Replaces the body of Config::validate_safety_limits.
+    pub fn validate_against(&self, limits: &SafetyLimits) -> Result<()> {
+        match self {
+            StressPattern::ConnectionFlood {
+                connections_per_second,
+                ..
+            } => {
+                if let Some(max) = limits.max_connections_per_second {
+                    if *connections_per_second > max {
+                        anyhow::bail!(
+                            "Connection rate {} exceeds safety limit of {} conn/s. \
+                            Adjust your config or increase safety_limits.max_connections_per_second",
+                            connections_per_second, max
+                        );
+                    }
+                }
+            }
+            StressPattern::RequestFlood { target_rps, .. } => {
+                if let Some(max) = limits.max_requests_per_second {
+                    if *target_rps > max {
+                        anyhow::bail!(
+                            "Request rate {} exceeds safety limit of {} req/s. \
+                            Adjust your config or increase safety_limits.max_requests_per_second",
+                            target_rps, max
+                        );
+                    }
+                }
+            }
+            StressPattern::LargePayload { size_mb, .. } => {
+                if let Some(max) = limits.max_payload_size_mb {
+                    if *size_mb > max {
+                        anyhow::bail!(
+                            "Payload size {} MB exceeds safety limit of {} MB. \
+                            Adjust your config or increase safety_limits.max_payload_size_mb",
+                            size_mb,
+                            max
+                        );
+                    }
+                }
+            }
+            StressPattern::Slowloris { connections, .. }
+            | StressPattern::SlowPost { connections, .. }
+            | StressPattern::SlowRead { connections, .. } => {
+                if let Some(max) = limits.max_concurrent_connections {
+                    if *connections > max {
+                        anyhow::bail!(
+                            "Concurrent connections {} exceeds safety limit of {}. \
+                            Adjust your config or increase safety_limits.max_concurrent_connections",
+                            connections, max
+                        );
+                    }
+                }
+            }
+            StressPattern::PipelineAbuse {
+                concurrent_connections,
+                ..
+            } => {
+                if let Some(max) = limits.max_concurrent_connections {
+                    if *concurrent_connections > max {
+                        anyhow::bail!(
+                            "Concurrent connections {} exceeds safety limit of {}. \
+                            Adjust your config or increase safety_limits.max_concurrent_connections",
+                            concurrent_connections, max
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -664,72 +830,7 @@ impl Config {
 
     fn validate_safety_limits(&self) -> Result<()> {
         if let Some(ref pattern) = self.stress_pattern {
-            match pattern {
-                StressPattern::ConnectionFlood {
-                    connections_per_second,
-                    ..
-                } => {
-                    if let Some(max) = self.safety_limits.max_connections_per_second {
-                        if *connections_per_second > max {
-                            anyhow::bail!(
-                                "Connection rate {} exceeds safety limit of {} conn/s. \
-                                Adjust your config or increase safety_limits.max_connections_per_second",
-                                connections_per_second, max
-                            );
-                        }
-                    }
-                }
-                StressPattern::RequestFlood { target_rps, .. } => {
-                    if let Some(max) = self.safety_limits.max_requests_per_second {
-                        if *target_rps > max {
-                            anyhow::bail!(
-                                "Request rate {} exceeds safety limit of {} req/s. \
-                                Adjust your config or increase safety_limits.max_requests_per_second",
-                                target_rps, max
-                            );
-                        }
-                    }
-                }
-                StressPattern::LargePayload { size_mb, .. } => {
-                    if let Some(max) = self.safety_limits.max_payload_size_mb {
-                        if *size_mb > max {
-                            anyhow::bail!(
-                                "Payload size {} MB exceeds safety limit of {} MB. \
-                                Adjust your config or increase safety_limits.max_payload_size_mb",
-                                size_mb,
-                                max
-                            );
-                        }
-                    }
-                }
-                StressPattern::Slowloris { connections, .. }
-                | StressPattern::SlowPost { connections, .. }
-                | StressPattern::SlowRead { connections, .. } => {
-                    if let Some(max) = self.safety_limits.max_concurrent_connections {
-                        if *connections > max {
-                            anyhow::bail!(
-                                "Concurrent connections {} exceeds safety limit of {}. \
-                                Adjust your config or increase safety_limits.max_concurrent_connections",
-                                connections, max
-                            );
-                        }
-                    }
-                }
-                StressPattern::PipelineAbuse {
-                    concurrent_connections,
-                    ..
-                } => {
-                    if let Some(max) = self.safety_limits.max_concurrent_connections {
-                        if *concurrent_connections > max {
-                            anyhow::bail!(
-                                "Concurrent connections {} exceeds safety limit of {}. \
-                                Adjust your config or increase safety_limits.max_concurrent_connections",
-                                concurrent_connections, max
-                            );
-                        }
-                    }
-                }
-            }
+            pattern.validate_against(&self.safety_limits)?;
         }
         Ok(())
     }

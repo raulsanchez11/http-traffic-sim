@@ -2,6 +2,8 @@
 
 A high-performance Rust-based HTTP/HTTPS benchmarking tool that simulates client traffic with configurable patterns. Supports single-target, multi-target load distribution, and comprehensive stress testing patterns for authorized infrastructure testing.
 
+> **Full documentation:** [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) — complete reference for configuration, execution modes, patterns, discovery, stress testing, metrics, architecture, and library API.
+
 ## Features
 
 ### Phase 1: Core Load Testing
@@ -717,6 +719,10 @@ cargo run --release -- --config config.stress-requestflood.example.yaml
 - Internet connection for HTTPS targets
 
 ## Documentation
+
+### Primary reference
+
+- **[docs/DOCUMENTATION.md](docs/DOCUMENTATION.md)** — Complete application documentation (configuration schema, CLI, patterns, discovery, stress testing, metrics, library API)
 
 ### Comprehensive Guides
 

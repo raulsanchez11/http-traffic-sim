@@ -1,3 +1,4 @@
+use hdrhistogram::Histogram;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -5,7 +6,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 pub struct RequestResult {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept for potential external use / completeness
     pub start_time: Instant,
     pub duration: Duration,
     pub status_code: Option<u16>,
@@ -37,10 +38,8 @@ impl ConnectionStats {
     }
 
     pub fn categorize_and_increment(&self, error: &str) {
-        // Avoid allocation by using case-insensitive contains
         let error_lower = error.as_bytes();
 
-        // Helper to check if bytes contain substring (case-insensitive)
         fn contains_ignore_case(haystack: &[u8], needle: &str) -> bool {
             haystack
                 .windows(needle.len())
@@ -103,7 +102,7 @@ pub struct StatusCodeDistribution {
 impl Default for StatusCodeDistribution {
     fn default() -> Self {
         Self {
-            counts: HashMap::with_capacity(10), // Pre-allocate for common status codes
+            counts: HashMap::with_capacity(10),
         }
     }
 }
@@ -113,7 +112,7 @@ impl StatusCodeDistribution {
         *self.counts.entry(code).or_insert(0) += 1;
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept for API completeness (unused in core paths)
     pub fn merge(&mut self, other: &StatusCodeDistribution) {
         for (code, count) in &other.counts {
             *self.counts.entry(*code).or_insert(0) += count;
@@ -129,7 +128,7 @@ pub struct ErrorDistribution {
 impl Default for ErrorDistribution {
     fn default() -> Self {
         Self {
-            counts: HashMap::with_capacity(20), // Pre-allocate for error types
+            counts: HashMap::with_capacity(20),
         }
     }
 }
@@ -139,12 +138,16 @@ impl ErrorDistribution {
         *self.counts.entry(error).or_insert(0) += 1;
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept for API completeness (unused in core paths)
     pub fn merge(&mut self, other: &ErrorDistribution) {
         for (error, count) in &other.counts {
             *self.counts.entry(error.clone()).or_insert(0) += count;
         }
     }
+}
+
+fn new_latency_histogram() -> Histogram<u64> {
+    Histogram::new_with_bounds(1, 3_600_000_000, 3).expect("Failed to create latency histogram")
 }
 
 #[derive(Clone)]
@@ -154,7 +157,7 @@ pub struct MetricsCollector {
 
 struct MetricsInner {
     start_time: Instant,
-    latencies_us: Vec<u64>, // Store latencies in microseconds
+    latency_hist: Histogram<u64>,
     status_codes: StatusCodeDistribution,
     errors: ErrorDistribution,
     total_requests: usize,
@@ -168,7 +171,7 @@ impl MetricsCollector {
         Self {
             inner: Arc::new(Mutex::new(MetricsInner {
                 start_time: Instant::now(),
-                latencies_us: Vec::with_capacity(10000), // Pre-allocate for typical workloads
+                latency_hist: new_latency_histogram(),
                 status_codes: StatusCodeDistribution::default(),
                 errors: ErrorDistribution::default(),
                 total_requests: 0,
@@ -181,7 +184,15 @@ impl MetricsCollector {
 
     pub fn record(&self, result: RequestResult) {
         let mut inner = self.inner.lock().unwrap();
+        Self::apply_record(&mut inner, result);
+    }
 
+    pub(crate) fn record_from(&self, result: &RequestResult) {
+        let mut inner = self.inner.lock().unwrap();
+        Self::apply_record(&mut inner, result.clone());
+    }
+
+    fn apply_record(inner: &mut MetricsInner, result: RequestResult) {
         inner.total_requests += 1;
 
         if result.success {
@@ -190,18 +201,15 @@ impl MetricsCollector {
             inner.failed_requests += 1;
         }
 
-        // Record latency in microseconds
         let latency_us = result.duration.as_micros() as u64;
-        inner.latencies_us.push(latency_us);
+        let _ = inner.latency_hist.record(latency_us);
 
-        // Record status code
         if let Some(code) = result.status_code {
             inner.status_codes.add(code);
         }
 
-        // Record error and categorize connection errors
         if let Some(error) = result.error {
-            if !result.success {
+            if !result.success && result.status_code.is_none() {
                 inner.connection_stats.categorize_and_increment(&error);
             }
             inner.errors.add(error);
@@ -211,14 +219,12 @@ impl MetricsCollector {
     pub fn get_snapshot(&self) -> MetricsSnapshot {
         let inner = self.inner.lock().unwrap();
 
-        let elapsed = inner.start_time.elapsed();
-
         MetricsSnapshot {
-            elapsed,
+            elapsed: inner.start_time.elapsed(),
             total_requests: inner.total_requests,
             successful_requests: inner.successful_requests,
             failed_requests: inner.failed_requests,
-            latencies_us: inner.latencies_us.clone(),
+            latency_hist: inner.latency_hist.clone(),
             status_codes: inner.status_codes.clone(),
             errors: inner.errors.clone(),
             connection_stats: inner.connection_stats.get_snapshot(),
@@ -228,6 +234,13 @@ impl MetricsCollector {
     pub fn reset_start_time(&self) {
         let mut inner = self.inner.lock().unwrap();
         inner.start_time = Instant::now();
+        inner.latency_hist = new_latency_histogram();
+        inner.status_codes = StatusCodeDistribution::default();
+        inner.errors = ErrorDistribution::default();
+        inner.total_requests = 0;
+        inner.successful_requests = 0;
+        inner.failed_requests = 0;
+        inner.connection_stats = ConnectionStats::new();
     }
 }
 
@@ -237,7 +250,7 @@ pub struct MetricsSnapshot {
     pub total_requests: usize,
     pub successful_requests: usize,
     pub failed_requests: usize,
-    pub latencies_us: Vec<u64>,
+    pub latency_hist: Histogram<u64>,
     pub status_codes: StatusCodeDistribution,
     pub errors: ErrorDistribution,
     pub connection_stats: ConnectionStatsSnapshot,
@@ -246,7 +259,7 @@ pub struct MetricsSnapshot {
 /// Per-target metrics tracker
 #[derive(Clone)]
 pub struct TargetMetrics {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept for potential external use
     pub target_id: String,
     pub collector: MetricsCollector,
 }
@@ -257,6 +270,23 @@ impl TargetMetrics {
             target_id,
             collector: MetricsCollector::new(),
         }
+    }
+}
+
+/// Records request results into metrics collectors.
+pub trait RequestRecorder: Send + Sync + Clone + 'static {
+    fn record(&self, result: RequestResult);
+}
+
+impl RequestRecorder for MetricsCollector {
+    fn record(&self, result: RequestResult) {
+        MetricsCollector::record(self, result);
+    }
+}
+
+impl RequestRecorder for MultiTargetMetrics {
+    fn record(&self, result: RequestResult) {
+        MultiTargetMetrics::record(self, result);
     }
 }
 
@@ -276,13 +306,13 @@ impl MultiTargetMetrics {
     }
 
     pub fn record(&self, result: RequestResult) {
-        // Record to global metrics
-        self.global.record(result.clone());
+        let target_id = result.target_id.clone();
 
-        // Record to per-target metrics
+        self.global.record_from(&result);
+
         let mut targets = self.targets.lock().unwrap();
         let target_metrics = targets
-            .entry(result.target_id.clone())
+            .entry(target_id)
             .or_insert_with(|| Arc::new(TargetMetrics::new(result.target_id.clone())));
 
         target_metrics.collector.record(result);

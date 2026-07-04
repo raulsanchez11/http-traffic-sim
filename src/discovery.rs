@@ -29,7 +29,7 @@
 //! };
 //! ```
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
@@ -172,14 +172,48 @@ pub enum PortSpec {
     },
 }
 
+/// Maximum inclusive port range width allowed during discovery.
+pub const MAX_PORT_RANGE_SPAN: u16 = 1024;
+
 impl PortSpec {
-    pub fn to_vec(&self) -> Vec<u16> {
+    pub fn to_vec(&self) -> Result<Vec<u16>> {
         match self {
-            PortSpec::Single(port) => vec![*port],
-            PortSpec::List(ports) => ports.clone(),
-            PortSpec::Range { start, end } => (*start..=*end).collect(),
+            PortSpec::Single(port) => Ok(vec![*port]),
+            PortSpec::List(ports) => Ok(ports.clone()),
+            PortSpec::Range { start, end } => {
+                if end < start {
+                    bail!("Port range start ({start}) must be <= end ({end})");
+                }
+                let span = (*end as u32).saturating_sub(*start as u32) + 1;
+                if span > MAX_PORT_RANGE_SPAN as u32 {
+                    bail!(
+                        "Port range spans {span} ports; maximum allowed is {MAX_PORT_RANGE_SPAN}"
+                    );
+                }
+                Ok((*start..=*end).collect())
+            }
         }
     }
+}
+
+fn resolve_ports(config: &PortDiscoveryConfig) -> Result<Vec<u16>> {
+    let mut ports = config.ports.to_vec()?;
+    if config.mode == DiscoveryMode::Both {
+        for well_known in [80u16, 443] {
+            if !ports.contains(&well_known) {
+                ports.push(well_known);
+            }
+        }
+        ports.sort_unstable();
+        ports.dedup();
+    }
+    Ok(ports)
+}
+
+fn should_probe_http(config: &PortDiscoveryConfig) -> bool {
+    matches!(config.mode, DiscoveryMode::Scan | DiscoveryMode::Both)
+        && config.detect_service
+        && config.validate_http
 }
 
 /// Action to take when port discovery fails.
@@ -243,7 +277,7 @@ pub enum PortStatus {
     /// Port is closed or refusing connections
     Closed,
     /// Port is filtered (no response, possibly firewall)
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept for completeness (not currently constructed)
     Filtered,
 }
 
@@ -407,8 +441,7 @@ async fn scan_ports(host: &str, ports: &[u16], config: &PortDiscoveryConfig) -> 
                 });
             }
 
-            // Detect service type if enabled
-            let service_type = if config.detect_service && config.validate_http {
+            let service_type = if should_probe_http(&config) {
                 detect_http_service(&host, port, timeout_duration).await
             } else {
                 None
@@ -490,7 +523,7 @@ async fn discover_single_target(
 ) -> Result<DiscoveryResult> {
     let start = std::time::Instant::now();
 
-    let ports = config.ports.to_vec();
+    let ports = resolve_ports(config)?;
     let scan_result = scan_ports(host, &ports, config).await?;
 
     let duration = start.elapsed();
@@ -515,7 +548,7 @@ pub fn extract_host_from_url(url: &str) -> Result<String> {
 }
 
 /// Extract port from URL or use default
-#[allow(dead_code)]
+#[allow(dead_code)] // kept as utility (unused in main code paths; tested in unit tests)
 pub fn extract_port_from_url(url: &str) -> Result<u16> {
     let parsed = url::Url::parse(url).with_context(|| format!("Invalid URL: {}", url))?;
 
@@ -534,6 +567,105 @@ pub fn extract_port_from_url(url: &str) -> Result<u16> {
     }
 }
 
+pub fn display_results(results: &[DiscoveryResult]) {
+    for result in results {
+        println!("Target: {} ({})", result.target_id, result.host);
+        println!("Discovery Duration: {:.2}s", result.duration.as_secs_f64());
+
+        if !result.discovered_ports.is_empty() {
+            println!("\n  Open Ports:");
+            for port_info in &result.discovered_ports {
+                let service = match &port_info.service_type {
+                    Some(ServiceType::Http) => " [HTTP]",
+                    Some(ServiceType::Https) => " [HTTPS]",
+                    Some(ServiceType::Unknown) => " [Unknown]",
+                    None => "",
+                };
+                println!(
+                    "    - Port {}{} - {:.2}ms response",
+                    port_info.port, service, port_info.response_time_ms
+                );
+            }
+        }
+
+        if !result.failed_ports.is_empty() {
+            println!("\n  Failed Ports:");
+            for failure in &result.failed_ports {
+                println!("    - Port {}: {}", failure.port, failure.error);
+            }
+        }
+
+        println!();
+    }
+
+    println!("{}\n", "=".repeat(80));
+}
+
+pub fn handle_failures(
+    results: &[DiscoveryResult],
+    targets: &[(String, String, PortDiscoveryConfig)],
+) -> Result<()> {
+    for (result, (_, _, discovery_config)) in results.iter().zip(targets.iter()) {
+        if result.failed_ports.is_empty() && !result.discovered_ports.is_empty() {
+            continue;
+        }
+
+        match discovery_config.on_failure {
+            FailureAction::Fail => {
+                bail!(
+                    "Port discovery failed for target '{}'. {} port(s) failed, {} succeeded. \
+                    Set on_failure to 'skip' or 'warn' to continue anyway.",
+                    result.target_id,
+                    result.failed_ports.len(),
+                    result.discovered_ports.len()
+                );
+            }
+            FailureAction::Skip => {
+                tracing::warn!(
+                    "Port discovery failed for target '{}'; target will be skipped (on_failure=skip). \
+                    {} port(s) failed, {} succeeded.",
+                    result.target_id,
+                    result.failed_ports.len(),
+                    result.discovered_ports.len()
+                );
+            }
+            FailureAction::Warn => {
+                tracing::warn!(
+                    "Port discovery had failures for target '{}', but continuing with original URL (on_failure=warn). \
+                    {} port(s) failed, {} succeeded.",
+                    result.target_id,
+                    result.failed_ports.len(),
+                    result.discovered_ports.len()
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn find_best_port(result: &DiscoveryResult) -> Option<u16> {
+    for port_info in &result.discovered_ports {
+        if port_info.service_type == Some(ServiceType::Https) {
+            return Some(port_info.port);
+        }
+    }
+    for port_info in &result.discovered_ports {
+        if port_info.service_type == Some(ServiceType::Http) {
+            return Some(port_info.port);
+        }
+    }
+    result.discovered_ports.first().map(|p| p.port)
+}
+
+pub fn update_url_port(url: &str, port: u16) -> Result<String> {
+    let mut parsed = url::Url::parse(url)?;
+    parsed
+        .set_port(Some(port))
+        .map_err(|_| anyhow::anyhow!("Failed to set port {port} on URL {url}"))?;
+    Ok(parsed.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -541,13 +673,13 @@ mod tests {
     #[test]
     fn test_port_spec_single() {
         let spec = PortSpec::Single(8080);
-        assert_eq!(spec.to_vec(), vec![8080]);
+        assert_eq!(spec.to_vec().unwrap(), vec![8080]);
     }
 
     #[test]
     fn test_port_spec_list() {
         let spec = PortSpec::List(vec![80, 443, 8080]);
-        assert_eq!(spec.to_vec(), vec![80, 443, 8080]);
+        assert_eq!(spec.to_vec().unwrap(), vec![80, 443, 8080]);
     }
 
     #[test]
@@ -556,7 +688,16 @@ mod tests {
             start: 8000,
             end: 8003,
         };
-        assert_eq!(spec.to_vec(), vec![8000, 8001, 8002, 8003]);
+        assert_eq!(spec.to_vec().unwrap(), vec![8000, 8001, 8002, 8003]);
+    }
+
+    #[test]
+    fn test_port_spec_range_too_large() {
+        let spec = PortSpec::Range {
+            start: 1,
+            end: 2000,
+        };
+        assert!(spec.to_vec().is_err());
     }
 
     #[test]

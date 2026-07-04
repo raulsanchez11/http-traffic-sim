@@ -33,7 +33,7 @@ fn test_single_successful_request() {
     assert_eq!(snapshot.total_requests, 1);
     assert_eq!(snapshot.successful_requests, 1);
     assert_eq!(snapshot.failed_requests, 0);
-    assert_eq!(snapshot.latencies_us.len(), 1);
+    assert_eq!(snapshot.latency_hist.len(), 1);
 }
 
 #[test]

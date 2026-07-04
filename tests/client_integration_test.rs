@@ -1,9 +1,16 @@
 //! Integration tests for HTTP client functionality.
 
 use http_traffic_sim::client::HttpClient;
-use http_traffic_sim::config::TargetConfig;
+use http_traffic_sim::config::{ClientConfig, TargetConfig};
 use std::collections::HashMap;
-use std::time::Duration;
+
+fn client_config(timeout_secs: u64, pool_max_idle_per_host: usize) -> ClientConfig {
+    ClientConfig {
+        timeout_secs,
+        pool_max_idle_per_host,
+        http2_prior_knowledge: false,
+    }
+}
 
 fn create_test_target(url: &str, method: &str) -> TargetConfig {
     TargetConfig {
@@ -19,7 +26,7 @@ fn create_test_target(url: &str, method: &str) -> TargetConfig {
 #[test]
 fn test_client_creation() {
     let target = create_test_target("https://httpbin.org/get", "GET");
-    let result = HttpClient::new(target, Duration::from_secs(30), 128);
+    let result = HttpClient::new(target, &client_config(30, 128));
 
     assert!(result.is_ok());
 }
@@ -27,8 +34,7 @@ fn test_client_creation() {
 #[test]
 fn test_client_creation_with_custom_timeout() {
     let target = create_test_target("https://httpbin.org/get", "GET");
-    let timeout = Duration::from_secs(60);
-    let result = HttpClient::new(target, timeout, 128);
+    let result = HttpClient::new(target, &client_config(60, 128));
 
     assert!(result.is_ok());
 }
@@ -36,7 +42,7 @@ fn test_client_creation_with_custom_timeout() {
 #[test]
 fn test_client_creation_with_custom_pool_size() {
     let target = create_test_target("https://httpbin.org/get", "GET");
-    let result = HttpClient::new(target, Duration::from_secs(30), 256);
+    let result = HttpClient::new(target, &client_config(30, 256));
 
     assert!(result.is_ok());
 }
@@ -89,7 +95,7 @@ fn test_target_config_with_body() {
 #[test]
 fn test_client_supports_https() {
     let target = create_test_target("https://httpbin.org/get", "GET");
-    let result = HttpClient::new(target, Duration::from_secs(30), 128);
+    let result = HttpClient::new(target, &client_config(30, 128));
 
     assert!(result.is_ok());
 }
@@ -97,7 +103,7 @@ fn test_client_supports_https() {
 #[test]
 fn test_client_supports_http() {
     let target = create_test_target("http://httpbin.org/get", "GET");
-    let result = HttpClient::new(target, Duration::from_secs(30), 128);
+    let result = HttpClient::new(target, &client_config(30, 128));
 
     assert!(result.is_ok());
 }
@@ -107,8 +113,8 @@ fn test_multiple_clients_with_different_configs() {
     let target1 = create_test_target("https://httpbin.org/get", "GET");
     let target2 = create_test_target("https://httpbin.org/post", "POST");
 
-    let client1 = HttpClient::new(target1, Duration::from_secs(30), 128);
-    let client2 = HttpClient::new(target2, Duration::from_secs(60), 256);
+    let client1 = HttpClient::new(target1, &client_config(30, 128));
+    let client2 = HttpClient::new(target2, &client_config(60, 256));
 
     assert!(client1.is_ok());
     assert!(client2.is_ok());
@@ -117,7 +123,7 @@ fn test_multiple_clients_with_different_configs() {
 #[test]
 fn test_client_with_minimal_pool() {
     let target = create_test_target("https://httpbin.org/get", "GET");
-    let result = HttpClient::new(target, Duration::from_secs(30), 1);
+    let result = HttpClient::new(target, &client_config(30, 1));
 
     assert!(result.is_ok());
 }
@@ -125,7 +131,7 @@ fn test_client_with_minimal_pool() {
 #[test]
 fn test_client_with_large_pool() {
     let target = create_test_target("https://httpbin.org/get", "GET");
-    let result = HttpClient::new(target, Duration::from_secs(30), 1000);
+    let result = HttpClient::new(target, &client_config(30, 1000));
 
     assert!(result.is_ok());
 }
@@ -179,18 +185,9 @@ fn test_target_config_with_fragment() {
 fn test_client_timeout_configuration() {
     let target = create_test_target("https://httpbin.org/get", "GET");
 
-    // Test various timeout values
-    let timeouts = vec![
-        Duration::from_secs(1),
-        Duration::from_secs(10),
-        Duration::from_secs(30),
-        Duration::from_secs(60),
-        Duration::from_secs(120),
-    ];
-
-    for timeout in timeouts {
-        let result = HttpClient::new(target.clone(), timeout, 128);
-        assert!(result.is_ok(), "Failed for timeout: {:?}", timeout);
+    for timeout_secs in [1, 10, 30, 60, 120] {
+        let result = HttpClient::new(target.clone(), &client_config(timeout_secs, 128));
+        assert!(result.is_ok(), "Failed for timeout: {timeout_secs}s");
     }
 }
 

@@ -35,6 +35,7 @@ use std::path::PathBuf;
 
 use crate::discovery::DiscoveryResult;
 use crate::stats::Statistics;
+use std::collections::HashMap;
 
 /// Reporter for displaying and exporting load test results.
 ///
@@ -281,6 +282,74 @@ impl Reporter {
     /// # Ok(())
     /// # }
     /// ```
+    pub fn show_multi_target_summary(
+        &self,
+        global: &Statistics,
+        per_target: &HashMap<String, Statistics>,
+    ) {
+        println!("\n{}", "=".repeat(80));
+        println!("                   MULTI-TARGET FINAL RESULTS");
+        println!("{}\n", "=".repeat(80));
+
+        println!("GLOBAL SUMMARY:");
+        println!(
+            "Duration:              {:.2}s",
+            global.duration.as_secs_f64()
+        );
+        println!("Total Requests:        {}", global.total_requests);
+        println!(
+            "Successful:            {} ({:.1}%)",
+            global.successful_requests, global.success_rate
+        );
+        println!(
+            "Failed:                {} ({:.1}%)",
+            global.failed_requests, global.error_rate
+        );
+        println!("Requests/sec:          {:.2}", global.requests_per_second);
+
+        println!("\n{}", "-".repeat(80));
+        println!("PER-TARGET BREAKDOWN:");
+        println!("{}", "-".repeat(80));
+
+        for (target_id, stats) in per_target {
+            let percentage = if global.total_requests > 0 {
+                (stats.total_requests as f64 / global.total_requests as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            println!("\nTarget: {target_id} ({percentage:.1}% of traffic)");
+            println!("  Total Requests:     {}", stats.total_requests);
+            println!("  Success Rate:       {:.1}%", stats.success_rate);
+            println!("  Avg Latency:        {:.2}ms", stats.latency.mean_ms);
+            println!("  P99 Latency:        {:.2}ms", stats.latency.p99_ms);
+        }
+
+        println!("\n{}\n", "=".repeat(80));
+    }
+
+    pub fn export_multi_target_json(
+        &self,
+        global: &Statistics,
+        per_target: &HashMap<String, Statistics>,
+        path: &PathBuf,
+    ) -> Result<()> {
+        #[derive(serde::Serialize)]
+        struct MultiTargetExport<'a> {
+            global: &'a Statistics,
+            per_target: &'a HashMap<String, Statistics>,
+        }
+
+        let payload = MultiTargetExport {
+            global,
+            per_target,
+        };
+        let json = serde_json::to_string_pretty(&payload)?;
+        std::fs::write(path, json)?;
+        println!("Results exported to: {}", path.display());
+        Ok(())
+    }
+
     pub fn export_json(&self, stats: &Statistics, path: &PathBuf) -> Result<()> {
         let json = serde_json::to_string_pretty(stats)?;
         std::fs::write(path, json)?;
@@ -316,7 +385,7 @@ impl Reporter {
     /// # Ok(())
     /// # }
     /// ```
-    #[allow(dead_code)]
+    #[allow(dead_code)] // kept for API completeness (discovery export not used in main flows)
     pub fn export_discovery_results(
         &self,
         results: &[DiscoveryResult],

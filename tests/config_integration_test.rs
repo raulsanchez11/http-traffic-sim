@@ -321,3 +321,141 @@ fn test_traffic_pattern_validate() {
     let err = bad_ramp.validate().unwrap_err();
     assert!(err.to_string().contains("must be <= 'to'"));
 }
+
+// Dedicated unit tests for StressPattern::describe() and validate_against (PR 2)
+#[test]
+fn test_stress_pattern_describe() {
+    let flood = StressPattern::ConnectionFlood {
+        connections_per_second: 100,
+        hold_time_ms: 5000,
+        duration_secs: 60,
+    };
+    assert_eq!(
+        flood.describe(),
+        "Connection Flood - 100 conn/s, hold 5000ms, duration 60s"
+    );
+
+    let slowloris = StressPattern::Slowloris {
+        connections: 50,
+        headers_per_second: 0.5,
+        duration_secs: 300,
+    };
+    assert_eq!(
+        slowloris.describe(),
+        "Slowloris - 50 connections, 0.50 headers/s, duration 300s"
+    );
+
+    let slowpost = StressPattern::SlowPost {
+        connections: 20,
+        bytes_per_second: 1024,
+        payload_size: 4096,
+    };
+    assert_eq!(
+        slowpost.describe(),
+        "Slow POST - 20 connections, 1024 bytes/s, payload 4096 bytes"
+    );
+
+    let reqflood = StressPattern::RequestFlood {
+        target_rps: 1000,
+        duration_secs: 60,
+    };
+    assert_eq!(
+        reqflood.describe(),
+        "Request Flood - 1000 req/s, duration 60s"
+    );
+
+    let large = StressPattern::LargePayload {
+        size_mb: 100,
+        concurrent: 10,
+        duration_secs: 30,
+    };
+    assert_eq!(
+        large.describe(),
+        "Large Payload - 100 MB, 10 concurrent, duration 30s"
+    );
+
+    let pipeline = StressPattern::PipelineAbuse {
+        requests_per_connection: 100,
+        concurrent_connections: 5,
+    };
+    assert_eq!(
+        pipeline.describe(),
+        "Pipeline Abuse - 100 req/conn, 5 connections"
+    );
+
+    let slowread = StressPattern::SlowRead {
+        connections: 10,
+        read_rate_bps: 1024,
+        duration_secs: 60,
+    };
+    assert_eq!(
+        slowread.describe(),
+        "Slow Read - 10 connections, 1024 bytes/s, duration 60s"
+    );
+}
+
+#[test]
+fn test_stress_pattern_validate_against() {
+    let limits = SafetyLimits {
+        max_connections_per_second: Some(50),
+        max_requests_per_second: Some(500),
+        max_payload_size_mb: Some(10),
+        max_concurrent_connections: Some(20),
+    };
+
+    let bad_flood = StressPattern::ConnectionFlood {
+        connections_per_second: 100,
+        hold_time_ms: 1000,
+        duration_secs: 10,
+    };
+    let err = bad_flood.validate_against(&limits).unwrap_err();
+    assert!(err.to_string().contains("exceeds safety limit of 50 conn/s"));
+
+    let good_flood = StressPattern::ConnectionFlood {
+        connections_per_second: 40,
+        hold_time_ms: 1000,
+        duration_secs: 10,
+    };
+    assert!(good_flood.validate_against(&limits).is_ok());
+
+    let bad_large = StressPattern::LargePayload {
+        size_mb: 50,
+        concurrent: 5,
+        duration_secs: 10,
+    };
+    let err = bad_large.validate_against(&limits).unwrap_err();
+    assert!(err.to_string().contains("exceeds safety limit of 10 MB"));
+
+    let bad_conns = StressPattern::Slowloris {
+        connections: 30,
+        headers_per_second: 1.0,
+        duration_secs: 10,
+    };
+    let err = bad_conns.validate_against(&limits).unwrap_err();
+    assert!(err.to_string().contains("exceeds safety limit of 20"));
+}
+
+// Regression test for default target ID assignment via effective_id (PR 3)
+#[test]
+fn test_target_config_effective_id_regression() {
+    let empty = TargetConfig { id: String::new(), ..Default::default() };
+    assert_eq!(empty.effective_id(None), "target");
+    assert_eq!(empty.effective_id(Some(3)), "target-3");
+
+    let named = TargetConfig { id: "api1".to_string(), ..Default::default() };
+    assert_eq!(named.effective_id(Some(0)), "api1");
+    assert_eq!(named.effective_id(None), "api1"); // named takes precedence
+
+    // Simulate the multi-target mutation site behavior (as in execute_multi_target)
+    let mut targets = vec![
+        TargetConfig { id: String::new(), ..Default::default() },
+        TargetConfig { id: "custom".to_string(), ..Default::default() },
+        TargetConfig { id: String::new(), ..Default::default() },
+    ];
+    for (i, t) in targets.iter_mut().enumerate() {
+        t.id = t.effective_id(Some(i));
+    }
+    assert_eq!(targets[0].id, "target-0");
+    assert_eq!(targets[1].id, "custom");
+    assert_eq!(targets[2].id, "target-2");
+}
