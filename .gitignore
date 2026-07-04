@@ -1,6 +1,7 @@
 # Rust
 /target/
-Cargo.lock
+# Cargo.lock is committed for this application (binary) to ensure reproducible builds.
+# (Do not ignore it for binaries.)
 
 # IDE
 .vscode/
@@ -9,14 +10,35 @@ Cargo.lock
 *.swo
 *~
 
-# Claude
+# Claude / AI assistants
 .claude/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Test outputs
+# Test and run outputs
 *.json
 test-*.yaml
 results.json
+*.log
+*.prof
+flamegraph*.svg
+perf.data*
+callgrind.*
+
+# Local development
+.env
+.env.*
+*.local
+*.local.yaml
+*.local.toml
+
+# Local binaries (if built in root)
+http-traffic-sim
+http-traffic-sim.exe
+
+# Temporary
+tmp/
+*.tmp
+**/*.rs.bk
