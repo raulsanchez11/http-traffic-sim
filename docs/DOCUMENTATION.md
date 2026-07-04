@@ -769,7 +769,7 @@ cargo bench
 ./scripts/profile.sh --url https://httpbin.org/get --concurrent 100 --duration 30
 ```
 
-See [docs/PROFILING_QUICKSTART.md](PROFILING_QUICKSTART.md).
+See `./scripts/profile.sh` for usage and `PERFORMANCE_TUNING.md` for related guidance.
 
 ### CI/CD
 
@@ -825,8 +825,7 @@ Test configs (discovery failure modes):
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Development workflow |
 | Safety limits | Configurable via `safety_limits` (no hard-coded defaults) |
 | [PORT_DISCOVERY_QUICKSTART.md](../PORT_DISCOVERY_QUICKSTART.md) | Discovery quick reference |
-| [docs/END_TO_END_BENCHMARKS.md](END_TO_END_BENCHMARKS.md) | Benchmark scenarios |
-| [docs/PROFILING_QUICKSTART.md](PROFILING_QUICKSTART.md) | Profiling guide |
+
 
 ---
 

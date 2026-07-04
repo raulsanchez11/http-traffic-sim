@@ -735,7 +735,7 @@ cargo run --release -- --config config.stress-requestflood.example.yaml
   - Pull request process
   - Example: Adding new features
 
-- **[docs/END_TO_END_BENCHMARKS.md](docs/END_TO_END_BENCHMARKS.md)** - Benchmarking guide
+
   - 8 benchmark scenarios
   - Test targets and setup
   - Result analysis
