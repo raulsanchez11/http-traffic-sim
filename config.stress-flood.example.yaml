@@ -13,11 +13,6 @@ stress_pattern:
   hold_time_ms: 100
   duration_secs: 60
 
-authorization:
-  confirmed: true
-  target_owner: "Infrastructure Team - Ticket #12345"
-  authorization_notes: "Load balancer capacity testing for Q1 2024"
-
 # Optional: Configure safety limits (omit for unlimited)
 # safety_limits:
 #   max_connections_per_second: 1000

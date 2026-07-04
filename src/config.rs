@@ -5,7 +5,7 @@
 //!
 //! - Single-target and multi-target load testing
 //! - Multiple traffic patterns (fixed, rate-limited, ramp-up, burst)
-//! - Stress testing patterns with authorization
+//! - Stress testing patterns (authorization assumed)
 //! - Port discovery configuration
 //! - Safety limits and validation
 //!
@@ -105,9 +105,6 @@ pub struct ConfigFile {
 
     /// Stress testing pattern (optional, overrides regular pattern)
     pub stress_pattern: Option<StressPattern>,
-
-    /// Authorization for stress testing (required when using stress_pattern)
-    pub authorization: Option<AuthorizationConfig>,
 
     /// Optional safety limits (user-configurable)
     #[serde(default)]
@@ -529,13 +526,6 @@ impl StressPattern {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthorizationConfig {
-    pub confirmed: bool,
-    pub target_owner: Option<String>,
-    pub authorization_notes: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[derive(Default)]
 pub struct SafetyLimits {
     /// Maximum connections per second (None = unlimited)
@@ -601,7 +591,6 @@ pub struct Config {
     pub targets: Option<TargetGroup>,
     pub pattern: TrafficPattern,
     pub stress_pattern: Option<StressPattern>,
-    pub authorization: Option<AuthorizationConfig>,
     pub safety_limits: SafetyLimits,
     pub client: ClientConfig,
     pub output: OutputConfig,
@@ -690,15 +679,16 @@ impl Config {
             targets: config.targets,
             pattern: config.pattern,
             stress_pattern: config.stress_pattern,
-            authorization: config.authorization,
             safety_limits: config.safety_limits,
             client: config.client,
             output: config.output,
             verbose: args.verbose,
         };
 
-        // Validate stress testing authorization and safety limits
-        result.validate_stress_authorization()?;
+        // Validate safety limits for stress patterns (authorization removed; assume authorized)
+        if result.stress_pattern.is_some() {
+            result.validate_safety_limits()?;
+        }
 
         result.validate_traffic_pattern()?;
         Ok(result)
@@ -803,28 +793,6 @@ impl Config {
             ExecutionMode::MultiTarget
         } else {
             ExecutionMode::SingleTarget
-        }
-    }
-
-    pub fn validate_stress_authorization(&self) -> Result<()> {
-        if self.stress_pattern.is_some() {
-            match &self.authorization {
-                Some(auth) if auth.confirmed => {
-                    // Validate against safety limits if configured
-                    self.validate_safety_limits()?;
-                    Ok(())
-                }
-                Some(_) => anyhow::bail!(
-                    "Stress testing requires authorization.confirmed to be true. \
-                    Set authorization.confirmed: true in your config file."
-                ),
-                None => anyhow::bail!(
-                    "Stress testing requires authorization configuration. \
-                    Add an 'authorization' section with 'confirmed: true' to your config file."
-                ),
-            }
-        } else {
-            Ok(())
         }
     }
 

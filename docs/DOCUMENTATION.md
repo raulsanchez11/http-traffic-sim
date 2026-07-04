@@ -37,7 +37,7 @@ The HTTP/HTTPS Traffic Simulator generates realistic client traffic against one 
 - **Load testing** — sustained or ramped traffic with latency percentiles and throughput metrics
 - **Multi-target benchmarking** — distribute requests across backends with per-target breakdowns
 - **Pre-flight port discovery** — validate connectivity and detect HTTP/HTTPS services before tests run
-- **Authorized stress testing** — connection floods, slow attacks, large payloads, and pipeline abuse (requires explicit authorization)
+- **Stress testing** — connection floods, slow attacks, large payloads, and pipeline abuse (assumes you are authorized)
 
 ### Key capabilities
 
@@ -46,7 +46,7 @@ The HTTP/HTTPS Traffic Simulator generates realistic client traffic against one 
 | Traffic patterns | Fixed concurrency, rate limit, ramp-up, burst |
 | Distribution | Round-robin, weighted, random, hash-based routing |
 | Discovery | TCP validation, HTTP/HTTPS detection, port ranges (max 1024 ports) |
-| Stress patterns | Connection flood, request flood, slowloris, slow POST/read, large payload, pipeline abuse |
+| Stress patterns | Connection flood, request flood, slowloris, slow POST/read, large payload, pipeline abuse (authorization assumed) |
 | Metrics | HDR histogram latencies, status codes, error distribution, connection error categories |
 | Output | Real-time terminal updates, console summary, JSON export |
 | Config | YAML/TOML files + CLI overrides |
@@ -136,7 +136,7 @@ The application selects a mode automatically based on configuration:
 |------|---------|-------------|
 | **Single target** | `target.url` set, no `targets`, no `stress_pattern` | One endpoint, standard load patterns |
 | **Multi-target** | `targets` section present, no `stress_pattern` | Multiple endpoints with load distribution |
-| **Stress test** | `stress_pattern` present | Aggressive patterns; requires authorization |
+| **Stress test** | `stress_pattern` present | Aggressive patterns (assumes authorization) |
 
 ### Mode selection logic
 
@@ -219,8 +219,8 @@ target:          # Single-target configuration
 targets:         # Multi-target group (optional)
 pattern:         # Load pattern (single/multi modes)
 stress_pattern:  # Stress pattern (stress mode only)
-authorization:   # Required for stress_pattern
-safety_limits:   # Optional caps for stress tests
+# authorization: (removed - authorization is assumed)
+safety_limits:   # Optional (omit for unlimited) - caps for stress tests only
 client:          # HTTP client settings
 output:          # Reporting settings
 # verbose is CLI-only
@@ -331,9 +331,9 @@ targets:
 
 Multi-target mode supports `file` and `console`; JSON export includes global + per-target statistics.
 
-### `safety_limits` (stress only)
+### `safety_limits` (stress only, optional)
 
-All fields are optional (`null` = unlimited):
+All fields are optional (`null` = unlimited). If the entire section is omitted, stress tests run with no safety limits enforced.
 
 | Field | Applies to |
 |-------|------------|
@@ -342,16 +342,13 @@ All fields are optional (`null` = unlimited):
 | `max_payload_size_mb` | Large payload |
 | `max_concurrent_connections` | Slowloris, slow POST/read, pipeline abuse |
 
-Limits are enforced at config load time when `stress_pattern` is set.
+When provided, limits are enforced at config load time for any `stress_pattern`.
 
-### `authorization` (stress only)
+### Authorization
 
-```yaml
-authorization:
-  confirmed: true                              # must be true
-  target_owner: "Team Name - Ticket #12345"
-  authorization_notes: "Approved capacity test"
-```
+The `authorization` section is no longer required (it has been removed). The tool assumes the user running it is authorized to perform stress tests against the target. 
+
+See the legal warning at the top of this section.
 
 ---
 
@@ -493,17 +490,11 @@ When discovery finds open ports, the tool picks the best port (HTTPS > HTTP > fi
 
 ### Requirements
 
-1. `stress_pattern` in config
-2. `authorization.confirmed: true`
-3. Optional `safety_limits` (recommended)
-4. Single `target.url`
+1. `stress_pattern` in config (authorization is assumed / no longer required)
+2. Optional `safety_limits` (recommended for safety)
+3. Single `target.url` (for most stress patterns)
 
-### Startup behavior
-
-1. Config validation (auth + safety limits) at load time
-2. Prominent legal warning printed to console
-3. 5-second countdown (async, non-blocking; Ctrl+C to cancel)
-4. Pattern execution
+See the legal warning below. Safety limits are **optional** — if omitted, no limits are enforced.
 
 ### Stress patterns
 
@@ -534,10 +525,7 @@ stress_pattern:
   headers_per_second: 0.1
   duration_secs: 300
 
-authorization:
-  confirmed: true
-  target_owner: "Security Team - Pen Test #2024-Q1"
-  authorization_notes: "Testing slowloris defenses"
+# No authorization section needed (assumed authorized)
 
 safety_limits:
   max_concurrent_connections: 500
@@ -631,14 +619,14 @@ src/
   stats.rs          # Percentile calculation from snapshots
   reporter.rs       # Console + JSON output
   target_selector.rs# Multi-target distribution
-  authorization.rs  # Stress warnings and countdown
+  # (authorization module removed)
 ```
 
 ### Data flow
 
 ```
 Config::load()
-    → authorization (stress) / discovery phase
+    → stress execution / discovery phase
     → HttpClient + PatternExecutor | StressExecutor
     → RequestResult stream
     → MetricsCollector (HDR histogram)
@@ -846,7 +834,7 @@ Test configs (discovery failure modes):
 
 - Only test infrastructure you **own** or have **explicit written authorization** to test.
 - Unauthorized testing may violate laws such as the CFAA (US) or equivalent regulations.
-- Stress tests require `authorization.confirmed: true` — this is enforced, not optional.
+- Stress tests assume you are authorized (no `authorization.confirmed` required).
 - Configure `safety_limits` to reduce risk of accidental overload.
 - Users are solely responsible for obtaining proper authorization.
 - The authors provide this tool for legitimate performance and security testing only.

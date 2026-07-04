@@ -22,10 +22,8 @@
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│               Authorization Validation                       │
-│  - Required for stress testing                               │
-│  - Safety limit validation                                   │
-│  - Warning display                                           │
+│  (Authorization removed - assumed)                           │
+│  - Safety limit validation (if configured)                   │
 └───────────────────────┬─────────────────────────────────────┘
                         │
                         ▼
@@ -101,41 +99,16 @@ CLI Arguments ────────────┘
 - CLI arguments override config file settings
 - Validation happens during load to fail fast
 - Separate stress and normal traffic patterns
-- Authorization required for stress patterns
+- Safety limits optional for stress patterns (authorization removed)
 
-### 2. Authorization Module (`src/authorization.rs`)
+### Safety Limits (for Stress Testing)
 
-**Responsibility**: Validate authorization for stress testing and display warnings.
-
-**Key Components**:
-- `validate_and_warn()`: Core validation function
-- `AuthorizationConfig`: Authorization metadata
-- `SafetyLimits`: User-configurable limits
-
-**Flow**:
-```
-Stress Pattern Detected
-    │
-    ▼
-Check Authorization Config
-    │
-    ├─ Missing/Not Confirmed ──► Error (blocks execution)
-    │
-    ▼
-Validate Against Safety Limits
-    │
-    ▼
-Display Warning + 5-second Countdown
-    │
-    ▼
-Proceed to Execution
-```
+Safety limits are optional and enforced when `safety_limits` are configured for stress patterns. Authorization has been removed (assumed).
 
 **Key Design Decisions**:
-- Fail-safe: requires explicit confirmation
-- Prominent warnings about legal/ethical implications
-- 5-second countdown gives user time to abort
-- Safety limits validated before execution starts
+- Safety limits are user-configurable
+- Enforced at config load for stress patterns
+- No hard-coded limits (see NO_HARDCODED_LIMITS.md for historical verification)
 
 ### 3. Discovery Module (`src/discovery.rs`)
 
@@ -362,12 +335,7 @@ PatternExecutor::execute()
    - Ties up server connections
    - Tests server timeout policies
 
-**Authorization Required**:
-```
-StressExecutor::execute() ───X──► Blocks without authorization
-    │
-    └─ Requires authorization module validation first
-```
+Stress tests run directly (authorization is assumed).
 
 ### 8. Metrics Module (`src/metrics.rs`)
 
@@ -625,20 +593,15 @@ Config{targets: [api1, api2, api3], distribution: RoundRobin}
 ### Stress Testing
 
 ```
-Config{stress_pattern: ConnectionFlood, authorization: {confirmed: true}}
+Config{stress_pattern: ConnectionFlood}
     │
-    └─ authorization::validate_and_warn()
+    (authorization assumed)
+    ├─ Validate safety limits (if configured)
+    └─ StressExecutor::new(client, metrics, pattern)
         │
-        ├─ Check authorization.confirmed == true
-        ├─ Validate safety limits
-        ├─ Display warning
-        └─ 5-second countdown
+        └─ execute_connection_flood()
             │
-            └─ StressExecutor::new(client, metrics, pattern)
-                │
-                └─ execute_connection_flood()
-                    │
-                    └─ Interval(connections_per_second)
+            └─ Interval(connections_per_second)
                         │
                         └─ spawn(async move {
                                client.execute_and_hold(hold_duration)
@@ -727,17 +690,14 @@ Report in final statistics
 
 ## Security Considerations
 
-### Stress Testing Authorization
+### Stress Testing
 
-**Three-layer protection**:
-1. Configuration requirement (`authorization.confirmed: true`)
-2. Validation at startup (blocks execution if missing)
-3. Warning display + countdown (gives user chance to abort)
+Authorization requirement has been removed. The tool assumes the operator is authorized.
 
-**Legal Protection**:
-- Prominent warnings about unauthorized testing
-- Requires explicit confirmation in config
-- Records authorization metadata (who, why)
+**Safety**:
+- Optional `safety_limits` are still validated and enforced when provided.
+- No hard-coded limits.
+- Users remain responsible for obtaining proper authorization.
 
 ### TLS/HTTPS
 
@@ -781,8 +741,7 @@ The design centralizes behavior on the data types themselves, making common oper
 1. Add variant to `StressPattern` enum (config.rs)
 2. Implement execution in `StressExecutor` (stress.rs)
 3. Implement `.validate_against(&self, limits: &SafetyLimits)` and `.describe()` on the new variant
-4. Update safety limit handling and authorization display if applicable
-5. Add tests
+4. Add tests (safety limits optional)
 
 ### Adding New Distribution Strategies
 

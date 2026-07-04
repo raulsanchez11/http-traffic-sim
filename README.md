@@ -48,11 +48,9 @@ A high-performance Rust-based HTTP/HTTPS benchmarking tool that simulates client
   - TLS handshake failures
   - DNS errors
 
-- **Safety & Authorization**:
-  - Mandatory authorization for stress tests
+- **Safety**:
   - User-configurable safety limits
-  - 5-second warning before stress tests
-  - Clear legal disclaimers
+  - No hard-coded limits (see NO_HARDCODED_LIMITS.md)
 
 - **Flexible Configuration**:
   - YAML/TOML config files
@@ -544,26 +542,9 @@ See the following example files:
 - `config.multi-target-discovery.example.yaml` - Multi-target with mixed discovery
 - `config.discovery-auto-detect.example.yaml` - Auto-detect best service
 
-## Stress Testing (Authorized Use Only)
+## Stress Testing (Authorization Assumed)
 
 ⚠️ **WARNING**: Stress testing should ONLY be performed against infrastructure you own or have explicit written permission to test. Unauthorized stress testing may be illegal in your jurisdiction.
-
-### Authorization Required
-
-All stress tests require authorization configuration:
-
-```yaml
-stress_pattern:
-  category: connectionflood
-  connections_per_second: 500
-  hold_time_ms: 100
-  duration_secs: 60
-
-authorization:
-  confirmed: true
-  target_owner: "Infrastructure Team - Ticket #12345"
-  authorization_notes: "Load balancer capacity testing"
-```
 
 ### Optional Safety Limits
 
@@ -660,9 +641,7 @@ See `config.stress-*.example.yaml` files for complete examples.
 
 ### Stress Test Safety Features
 
-- **Mandatory Authorization**: Tests require `authorization.confirmed: true`
-- **5-Second Warning**: Countdown before test starts (press Ctrl+C to cancel)
-- **Legal Disclaimer**: Clear warnings displayed before execution
+- **Assumed Authorization**: The tool runs under the assumption that you are authorized to test the target.
 - **Optional Safety Limits**: User-configurable caps on rates and payloads
 - **Connection Error Tracking**: Detailed categorization of failures
 
@@ -799,7 +778,7 @@ Pre-commit hooks and helper scripts:
 
 - Only test infrastructure you own or have explicit written permission to test
 - Unauthorized stress testing may violate Computer Fraud and Abuse Act (CFAA) or similar laws
-- Users are solely responsible for ensuring they have proper authorization
+- Users are solely responsible for ensuring they have proper authorization to test the target infrastructure.
 - Configure appropriate safety limits to prevent unintended impact
 - Always obtain written approval before running stress tests
 

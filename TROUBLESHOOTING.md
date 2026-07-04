@@ -142,23 +142,11 @@ xcode-select --install
 python3 -c "import yaml; yaml.safe_load(open('config.yaml'))"
 ```
 
-### "Stress testing requires authorization"
+### Stress testing errors
 
-**Symptom**: Stress pattern blocked
+Since authorization has been removed, stress tests will run if a valid `stress_pattern` is provided (assuming you are authorized). Errors are typically due to invalid config, missing `target.url`, or safety limits being exceeded.
 
-**Solution**: Add authorization to config:
-```yaml
-stress_pattern:
-  category: connectionflood
-  connections_per_second: 100
-  hold_time_ms: 5000
-  duration_secs: 60
-
-authorization:
-  confirmed: true  # REQUIRED
-  target_owner: "Your Name - Ticket #12345"
-  authorization_notes: "Load test approved by security team"
-```
+See the "Stress Testing" section in [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) for current requirements.
 
 ---
 
@@ -388,11 +376,11 @@ authorization:
 
 ## Stress Testing Issues
 
-### "Stress testing requires authorization"
+### Stress test configuration issues
 
-**Symptom**: Blocked before execution
+**Symptom**: Errors when starting a stress test
 
-**Solution**: See [Configuration Issues](#stress-testing-requires-authorization) above
+**Solution**: Ensure `stress_pattern` is correctly specified and (if used) `safety_limits` are not exceeded. See the Stress Testing section in DOCUMENTATION.md.
 
 ### "Connection rate exceeds safety limit"
 

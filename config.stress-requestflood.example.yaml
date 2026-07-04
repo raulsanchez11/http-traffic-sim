@@ -13,11 +13,6 @@ stress_pattern:
   target_rps: 10000
   duration_secs: 120
 
-authorization:
-  confirmed: true
-  target_owner: "DevOps Team - Change Request #567"
-  authorization_notes: "API gateway stress testing"
-
 # Optional: Configure safety limits (omit for unlimited)
 safety_limits:
   max_requests_per_second: 50000  # Enforce limit at 50k RPS

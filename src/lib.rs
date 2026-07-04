@@ -1,7 +1,6 @@
 // Library interface for http-traffic-sim
 // Exposes modules for testing, benchmarking, and external use
 
-pub mod authorization;
 pub mod client;
 pub mod config;
 pub mod discovery;

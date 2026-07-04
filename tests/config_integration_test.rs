@@ -70,19 +70,6 @@ fn test_safety_limits_validation() {
 }
 
 #[test]
-fn test_authorization_config() {
-    let auth = AuthorizationConfig {
-        confirmed: true,
-        target_owner: Some("Security Team".to_string()),
-        authorization_notes: Some("Load test approved".to_string()),
-    };
-
-    assert!(auth.confirmed);
-    assert!(auth.target_owner.is_some());
-    assert!(auth.authorization_notes.is_some());
-}
-
-#[test]
 fn test_traffic_patterns_all_variants() {
     // Fixed pattern
     let fixed = TrafficPattern::Fixed {

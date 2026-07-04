@@ -11,11 +11,6 @@ stress_pattern:
   headers_per_second: 0.1
   duration_secs: 300
 
-authorization:
-  confirmed: true
-  target_owner: "Security Team - Penetration Test #2024-Q1"
-  authorization_notes: "Testing slowloris defense mechanisms"
-
 client:
   timeout_secs: 300
   pool_max_idle_per_host: 500

@@ -7,7 +7,6 @@ use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
-use crate::authorization;
 use crate::client::HttpClient;
 use crate::config::{Config, ExecutionMode, TargetConfig};
 use crate::discovery::{
@@ -24,15 +23,6 @@ use crate::target_selector::TargetSelector;
 pub async fn run() -> Result<()> {
     let config = Config::load()?;
     setup_logging(config.verbose);
-
-    if let Some(ref stress_pattern) = config.stress_pattern {
-        authorization::prepare_stress_run(
-            stress_pattern,
-            &config.authorization,
-            &config.safety_limits,
-        )
-        .await?;
-    }
 
     let config = if should_perform_discovery(&config) {
         perform_discovery(config).await?

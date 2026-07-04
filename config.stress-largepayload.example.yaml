@@ -13,11 +13,6 @@ stress_pattern:
   concurrent: 10
   duration_secs: 300
 
-authorization:
-  confirmed: true
-  target_owner: "Storage Team - Ticket #789"
-  authorization_notes: "Upload service capacity testing"
-
 # Optional: Configure safety limits
 safety_limits:
   max_payload_size_mb: 100  # Limit to 100MB per request
