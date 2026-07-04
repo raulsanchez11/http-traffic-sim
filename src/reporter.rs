@@ -340,10 +340,7 @@ impl Reporter {
             per_target: &'a HashMap<String, Statistics>,
         }
 
-        let payload = MultiTargetExport {
-            global,
-            per_target,
-        };
+        let payload = MultiTargetExport { global, per_target };
         let json = serde_json::to_string_pretty(&payload)?;
         std::fs::write(path, json)?;
         println!("Results exported to: {}", path.display());

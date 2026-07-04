@@ -71,7 +71,10 @@ fn test_target_config_with_headers() {
     };
 
     assert_eq!(target.headers.len(), 2);
-    assert_eq!(target.headers.get("User-Agent").unwrap(), "http-traffic-sim/1.0");
+    assert_eq!(
+        target.headers.get("User-Agent").unwrap(),
+        "http-traffic-sim/1.0"
+    );
     assert_eq!(target.headers.get("Accept").unwrap(), "application/json");
 }
 
@@ -158,10 +161,7 @@ fn test_target_config_different_http_methods() {
 
 #[test]
 fn test_target_config_with_query_parameters() {
-    let target = create_test_target(
-        "https://httpbin.org/get?param1=value1&param2=value2",
-        "GET"
-    );
+    let target = create_test_target("https://httpbin.org/get?param1=value1&param2=value2", "GET");
 
     assert!(target.url.contains("param1=value1"));
     assert!(target.url.contains("param2=value2"));
@@ -227,7 +227,8 @@ fn test_target_config_with_complex_json_body() {
             "timestamp": "2024-01-01T00:00:00Z",
             "version": "1.0"
         }
-    }"#.to_string();
+    }"#
+    .to_string();
 
     let target = TargetConfig {
         id: "test".to_string(),

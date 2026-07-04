@@ -50,7 +50,10 @@ fn test_target_config_with_headers() {
     assert_eq!(target.url, "https://example.com/api");
     assert_eq!(target.method, "POST");
     assert_eq!(target.headers.len(), 2);
-    assert_eq!(target.headers.get("Content-Type").unwrap(), "application/json");
+    assert_eq!(
+        target.headers.get("Content-Type").unwrap(),
+        "application/json"
+    );
     assert!(target.body.is_some());
 }
 
@@ -116,7 +119,11 @@ fn test_traffic_patterns_all_variants() {
         total_bursts: None,
     };
     match burst {
-        TrafficPattern::Burst { size, interval_secs, .. } => {
+        TrafficPattern::Burst {
+            size,
+            interval_secs,
+            ..
+        } => {
             assert_eq!(size, 100);
             assert_eq!(interval_secs, 5);
         }
@@ -174,7 +181,10 @@ fn test_stress_patterns() {
         duration_secs: 60,
     };
     match conn_flood {
-        StressPattern::ConnectionFlood { connections_per_second, .. } => {
+        StressPattern::ConnectionFlood {
+            connections_per_second,
+            ..
+        } => {
             assert_eq!(connections_per_second, 100);
         }
         _ => panic!("Should be ConnectionFlood"),
@@ -289,7 +299,9 @@ fn test_traffic_pattern_validate() {
         total_requests: None,
     };
     let err = bad_rate.validate().unwrap_err();
-    assert!(err.to_string().contains("Rate limit must be at least 1 request per second"));
+    assert!(err
+        .to_string()
+        .contains("Rate limit must be at least 1 request per second"));
 
     let good_ramp = TrafficPattern::Ramp {
         from: 5,
@@ -396,7 +408,9 @@ fn test_stress_pattern_validate_against() {
         duration_secs: 10,
     };
     let err = bad_flood.validate_against(&limits).unwrap_err();
-    assert!(err.to_string().contains("exceeds safety limit of 50 conn/s"));
+    assert!(err
+        .to_string()
+        .contains("exceeds safety limit of 50 conn/s"));
 
     let good_flood = StressPattern::ConnectionFlood {
         connections_per_second: 40,
@@ -425,19 +439,34 @@ fn test_stress_pattern_validate_against() {
 // Regression test for default target ID assignment via effective_id (PR 3)
 #[test]
 fn test_target_config_effective_id_regression() {
-    let empty = TargetConfig { id: String::new(), ..Default::default() };
+    let empty = TargetConfig {
+        id: String::new(),
+        ..Default::default()
+    };
     assert_eq!(empty.effective_id(None), "target");
     assert_eq!(empty.effective_id(Some(3)), "target-3");
 
-    let named = TargetConfig { id: "api1".to_string(), ..Default::default() };
+    let named = TargetConfig {
+        id: "api1".to_string(),
+        ..Default::default()
+    };
     assert_eq!(named.effective_id(Some(0)), "api1");
     assert_eq!(named.effective_id(None), "api1"); // named takes precedence
 
     // Simulate the multi-target mutation site behavior (as in execute_multi_target)
-    let mut targets = vec![
-        TargetConfig { id: String::new(), ..Default::default() },
-        TargetConfig { id: "custom".to_string(), ..Default::default() },
-        TargetConfig { id: String::new(), ..Default::default() },
+    let mut targets = [
+        TargetConfig {
+            id: String::new(),
+            ..Default::default()
+        },
+        TargetConfig {
+            id: "custom".to_string(),
+            ..Default::default()
+        },
+        TargetConfig {
+            id: String::new(),
+            ..Default::default()
+        },
     ];
     for (i, t) in targets.iter_mut().enumerate() {
         t.id = t.effective_id(Some(i));

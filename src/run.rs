@@ -11,7 +11,6 @@ use crate::client::HttpClient;
 use crate::config::{Config, ExecutionMode, TargetConfig};
 use crate::discovery::{
     self, discover_targets, find_best_port, handle_failures, update_url_port, FailureAction,
-
 };
 use crate::metrics::{MetricsCollector, MultiTargetMetrics};
 use crate::patterns::PatternExecutor;
@@ -309,12 +308,7 @@ fn print_startup_info(config: &Config) {
 }
 
 fn should_perform_discovery(config: &Config) -> bool {
-    if config
-        .target
-        .discovery
-        .as_ref()
-        .is_some_and(|d| d.enabled)
-    {
+    if config.target.discovery.as_ref().is_some_and(|d| d.enabled) {
         return true;
     }
 

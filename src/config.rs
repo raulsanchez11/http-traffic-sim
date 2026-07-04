@@ -90,8 +90,7 @@ pub struct CliArgs {
     pub verbose: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConfigFile {
     #[serde(default)]
     pub target: TargetConfig,
@@ -116,7 +115,6 @@ pub struct ConfigFile {
     #[serde(default)]
     pub output: OutputConfig,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetConfig {
@@ -156,7 +154,7 @@ impl TargetConfig {
     /// Returns the configured id, or a generated default based on index.
     /// - index=None  => "target"   (single-target cases)
     /// - index=Some(i) => "target-{i}" (multi-target)
-    /// If id is already set (non-empty), returns it as-is.
+    ///   If id is already set (non-empty), returns it as-is.
     pub fn effective_id(&self, index: Option<usize>) -> String {
         if !self.id.is_empty() {
             self.id.clone()
@@ -476,7 +474,8 @@ impl StressPattern {
                         anyhow::bail!(
                             "Request rate {} exceeds safety limit of {} req/s. \
                             Adjust your config or increase safety_limits.max_requests_per_second",
-                            target_rps, max
+                            target_rps,
+                            max
                         );
                     }
                 }
@@ -525,8 +524,7 @@ impl StressPattern {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SafetyLimits {
     /// Maximum connections per second (None = unlimited)
     pub max_connections_per_second: Option<usize>,
@@ -540,7 +538,6 @@ pub struct SafetyLimits {
     /// Maximum concurrent connections (None = unlimited)
     pub max_concurrent_connections: Option<usize>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientConfig {

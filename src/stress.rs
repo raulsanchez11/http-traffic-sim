@@ -59,13 +59,8 @@ impl StressExecutor {
                 bytes_per_second,
                 payload_size,
             } => {
-                self.execute_slow_post(
-                    *connections,
-                    *bytes_per_second,
-                    *payload_size,
-                    cancel_token,
-                )
-                .await
+                self.execute_slow_post(*connections, *bytes_per_second, *payload_size, cancel_token)
+                    .await
             }
             StressPattern::RequestFlood {
                 target_rps,
@@ -383,4 +378,3 @@ fn should_continue(cancel_token: &CancellationToken, start: Instant, duration_se
     }
     true
 }
-

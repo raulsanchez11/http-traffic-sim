@@ -170,7 +170,7 @@ impl Statistics {
             .iter()
             .map(|(k, v)| (*k, *v))
             .collect();
-        status_codes.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by count descending
+        status_codes.sort_by_key(|b| std::cmp::Reverse(b.1)); // Sort by count descending
 
         let mut errors: Vec<(String, usize)> = snapshot
             .errors
@@ -178,7 +178,7 @@ impl Statistics {
             .iter()
             .map(|(k, v)| (k.clone(), *v))
             .collect();
-        errors.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by count descending
+        errors.sort_by_key(|b| std::cmp::Reverse(b.1)); // Sort by count descending
 
         Statistics {
             duration: snapshot.elapsed,
@@ -195,7 +195,7 @@ impl Statistics {
     }
 
     fn calculate_latency_stats(hist: &Histogram<u64>) -> LatencyStats {
-        if hist.len() == 0 {
+        if hist.is_empty() {
             return LatencyStats {
                 min_ms: 0.0,
                 max_ms: 0.0,

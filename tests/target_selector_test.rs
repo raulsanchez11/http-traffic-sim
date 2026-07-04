@@ -1,6 +1,6 @@
 //! Integration tests for target selection strategies.
 
-use http_traffic_sim::config::{LoadDistribution, TargetConfig, HashField};
+use http_traffic_sim::config::{HashField, LoadDistribution, TargetConfig};
 use http_traffic_sim::target_selector::TargetSelector;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -68,7 +68,11 @@ fn test_random_selection_distribution() {
     // With 300 selections and 3 targets, expect roughly 100 each
     // Allow 50-150 range for randomness (should be within this with high probability)
     for (_target, count) in counts.iter() {
-        assert!(*count >= 50 && *count <= 150, "Count {} outside expected range", count);
+        assert!(
+            (50..=150).contains(count),
+            "Count {} outside expected range",
+            count
+        );
     }
 }
 
@@ -76,10 +80,7 @@ fn test_random_selection_distribution() {
 fn test_weighted_selection_equal_weights() {
     let targets = create_test_targets(3);
     let weights = vec![1.0, 1.0, 1.0]; // Equal weights
-    let selector = TargetSelector::new(
-        targets.clone(),
-        LoadDistribution::Weighted { weights },
-    );
+    let selector = TargetSelector::new(targets.clone(), LoadDistribution::Weighted { weights });
 
     let mut counts = HashMap::new();
     for _ in 0..300 {
@@ -89,7 +90,11 @@ fn test_weighted_selection_equal_weights() {
 
     // With equal weights, should be roughly balanced
     for (_target, count) in counts.iter() {
-        assert!(*count >= 70 && *count <= 130, "Count {} outside expected range", count);
+        assert!(
+            (70..=130).contains(count),
+            "Count {} outside expected range",
+            count
+        );
     }
 }
 
@@ -97,10 +102,7 @@ fn test_weighted_selection_equal_weights() {
 fn test_weighted_selection_skewed_weights() {
     let targets = create_test_targets(3);
     let weights = vec![0.7, 0.2, 0.1]; // 70%, 20%, 10%
-    let selector = TargetSelector::new(
-        targets.clone(),
-        LoadDistribution::Weighted { weights },
-    );
+    let selector = TargetSelector::new(targets.clone(), LoadDistribution::Weighted { weights });
 
     let mut counts = HashMap::new();
     for _ in 0..1000 {
@@ -115,19 +117,28 @@ fn test_weighted_selection_skewed_weights() {
     let count_1 = *counts.get("target-1").unwrap();
     let count_2 = *counts.get("target-2").unwrap();
 
-    assert!(count_0 >= 650 && count_0 <= 750, "Target 0 count {} outside expected range", count_0);
-    assert!(count_1 >= 150 && count_1 <= 250, "Target 1 count {} outside expected range", count_1);
-    assert!(count_2 >= 50 && count_2 <= 150, "Target 2 count {} outside expected range", count_2);
+    assert!(
+        (650..=750).contains(&count_0),
+        "Target 0 count {} outside expected range",
+        count_0
+    );
+    assert!(
+        (150..=250).contains(&count_1),
+        "Target 1 count {} outside expected range",
+        count_1
+    );
+    assert!(
+        (50..=150).contains(&count_2),
+        "Target 2 count {} outside expected range",
+        count_2
+    );
 }
 
 #[test]
 fn test_weighted_selection_with_zero_weight() {
     let targets = create_test_targets(3);
     let weights = vec![1.0, 0.0, 1.0]; // Middle target has zero weight
-    let selector = TargetSelector::new(
-        targets.clone(),
-        LoadDistribution::Weighted { weights },
-    );
+    let selector = TargetSelector::new(targets.clone(), LoadDistribution::Weighted { weights });
 
     let mut counts = HashMap::new();
     for _ in 0..200 {
@@ -137,13 +148,17 @@ fn test_weighted_selection_with_zero_weight() {
 
     // target-1 should rarely or never be selected
     let count_1 = counts.get("target-1").unwrap_or(&0);
-    assert!(*count_1 < 10, "Target with zero weight selected {} times", count_1);
+    assert!(
+        *count_1 < 10,
+        "Target with zero weight selected {} times",
+        count_1
+    );
 
     // target-0 and target-2 should split the load
     let count_0 = *counts.get("target-0").unwrap();
     let count_2 = *counts.get("target-2").unwrap();
-    assert!(count_0 >= 80 && count_0 <= 120);
-    assert!(count_2 >= 80 && count_2 <= 120);
+    assert!((80..=120).contains(&count_0));
+    assert!((80..=120).contains(&count_2));
 }
 
 #[test]
@@ -151,13 +166,18 @@ fn test_hash_based_selection_is_deterministic_and_spreads() {
     let targets = create_test_targets(3);
     let selector = TargetSelector::new(
         targets.clone(),
-        LoadDistribution::Hash { field: HashField::SourceIp },
+        LoadDistribution::Hash {
+            field: HashField::SourceIp,
+        },
     );
 
     let selections: Vec<String> = (0..30).map(|_| selector.select().id.clone()).collect();
     let unique: std::collections::HashSet<_> = selections.iter().cloned().collect();
 
-    assert!(unique.len() > 1, "hash routing should spread across targets");
+    assert!(
+        unique.len() > 1,
+        "hash routing should spread across targets"
+    );
     assert!(selections.iter().all(|id| id.starts_with("target-")));
 }
 
@@ -214,10 +234,7 @@ fn test_selector_preserves_target_config() {
 fn test_weighted_selection_with_non_normalized_weights() {
     let targets = create_test_targets(2);
     let weights = vec![4.0, 1.0]; // Not normalized (sum is 5, not 1)
-    let selector = TargetSelector::new(
-        targets.clone(),
-        LoadDistribution::Weighted { weights },
-    );
+    let selector = TargetSelector::new(targets.clone(), LoadDistribution::Weighted { weights });
 
     let mut counts = HashMap::new();
     for _ in 0..500 {
@@ -231,8 +248,16 @@ fn test_weighted_selection_with_non_normalized_weights() {
 
     // target-0 should get ~80% (375-425)
     // target-1 should get ~20% (75-125)
-    assert!(count_0 >= 375 && count_0 <= 425, "Target 0 count {} outside expected range", count_0);
-    assert!(count_1 >= 75 && count_1 <= 125, "Target 1 count {} outside expected range", count_1);
+    assert!(
+        (375..=425).contains(&count_0),
+        "Target 0 count {} outside expected range",
+        count_0
+    );
+    assert!(
+        (75..=125).contains(&count_1),
+        "Target 1 count {} outside expected range",
+        count_1
+    );
 }
 
 #[test]
@@ -241,7 +266,10 @@ fn test_concurrent_round_robin_selection() {
     use std::thread;
 
     let targets = create_test_targets(3);
-    let selector = Arc::new(TargetSelector::new(targets.clone(), LoadDistribution::RoundRobin));
+    let selector = Arc::new(TargetSelector::new(
+        targets.clone(),
+        LoadDistribution::RoundRobin,
+    ));
 
     let mut handles = vec![];
 
@@ -275,7 +303,11 @@ fn test_concurrent_round_robin_selection() {
 
     // With round-robin and 100 selections, expect ~33 each (allow 25-42)
     for (_target, count) in counts.iter() {
-        assert!(*count >= 25 && *count <= 42, "Count {} outside expected range in concurrent test", count);
+        assert!(
+            (25..=42).contains(count),
+            "Count {} outside expected range in concurrent test",
+            count
+        );
     }
 }
 

@@ -166,6 +166,12 @@ struct MetricsInner {
     connection_stats: ConnectionStats,
 }
 
+impl Default for MetricsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetricsCollector {
     pub fn new() -> Self {
         Self {
@@ -295,6 +301,12 @@ impl RequestRecorder for MultiTargetMetrics {
 pub struct MultiTargetMetrics {
     targets: Arc<Mutex<HashMap<String, Arc<TargetMetrics>>>>,
     global: MetricsCollector,
+}
+
+impl Default for MultiTargetMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MultiTargetMetrics {

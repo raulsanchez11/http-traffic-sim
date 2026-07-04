@@ -143,10 +143,7 @@ impl HttpClient {
         let start = Instant::now();
         let target = self.selected_target();
 
-        match self
-            .hold_raw_connection(&target.url, hold_duration)
-            .await
-        {
+        match self.hold_raw_connection(&target.url, hold_duration).await {
             Ok(()) => RequestResult {
                 start_time: start,
                 duration: start.elapsed(),
@@ -219,10 +216,7 @@ impl HttpClient {
         let target = self.selected_target();
         let payload = vec![b'x'; size_mb.saturating_mul(1024 * 1024).max(1)];
 
-        let mut request_builder = self
-            .client
-            .request(Method::POST, &target.url)
-            .body(payload);
+        let mut request_builder = self.client.request(Method::POST, &target.url).body(payload);
         for (key, value) in &target.headers {
             request_builder = request_builder.header(key, value);
         }
@@ -284,8 +278,7 @@ impl HttpClient {
                 match response.chunk().await {
                     Ok(Some(chunk)) => {
                         let chunk_delay =
-                            Duration::from_secs_f64(chunk.len() as f64 / rate as f64)
-                                .max(delay);
+                            Duration::from_secs_f64(chunk.len() as f64 / rate as f64).max(delay);
                         tokio::time::sleep(chunk_delay).await;
                     }
                     Ok(None) => break,
@@ -324,12 +317,8 @@ fn parse_host_port(url: &str) -> Result<(String, u16)> {
         .host_str()
         .ok_or_else(|| anyhow::anyhow!("URL has no host: {url}"))?
         .to_string();
-    let port = parsed.port().unwrap_or_else(|| {
-        if parsed.scheme() == "https" {
-            443
-        } else {
-            80
-        }
-    });
+    let port = parsed
+        .port()
+        .unwrap_or_else(|| if parsed.scheme() == "https" { 443 } else { 80 });
     Ok((host, port))
 }

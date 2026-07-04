@@ -278,14 +278,24 @@ impl<R: RequestRecorder> PatternExecutor<R> {
 
 pub(crate) async fn drain_join_set(join_set: &mut JoinSet<()>, timeout: Duration) {
     let _ = tokio::time::timeout(timeout, async {
-        while join_set.join_next().await.transpose().unwrap_or(None).is_some() {}
+        while join_set
+            .join_next()
+            .await
+            .transpose()
+            .unwrap_or(None)
+            .is_some()
+        {}
     })
     .await;
 }
 
 /// Shared helper for the common cancel + elapsed duration check pattern.
 /// Returns true if we should keep going.
-fn should_continue(cancel_token: &CancellationToken, start: Instant, duration_secs: Option<u64>) -> bool {
+fn should_continue(
+    cancel_token: &CancellationToken,
+    start: Instant,
+    duration_secs: Option<u64>,
+) -> bool {
     if cancel_token.is_cancelled() {
         return false;
     }

@@ -137,7 +137,6 @@ pub enum DiscoveryMode {
     Both,
 }
 
-
 /// Port specification for discovery.
 ///
 /// Specifies which ports to check during discovery.
@@ -232,7 +231,6 @@ pub enum FailureAction {
     /// Log warning but continue with all targets
     Warn,
 }
-
 
 /// Results from port discovery for a single target.
 ///

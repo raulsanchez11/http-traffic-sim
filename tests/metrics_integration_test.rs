@@ -62,13 +62,23 @@ fn test_multiple_requests_with_status_codes() {
     let metrics = MetricsCollector::new();
 
     // Record various status codes
-    for (status, success) in &[(200, true), (201, true), (400, false), (500, false), (200, true)] {
+    for (status, success) in &[
+        (200, true),
+        (201, true),
+        (400, false),
+        (500, false),
+        (200, true),
+    ] {
         let result = RequestResult {
             start_time: Instant::now(),
             duration: Duration::from_millis(50),
             status_code: Some(*status),
             success: *success,
-            error: if *success { None } else { Some(format!("HTTP {}", status)) },
+            error: if *success {
+                None
+            } else {
+                Some(format!("HTTP {}", status))
+            },
             target_id: "test".to_string(),
         };
         metrics.record(result);
@@ -116,7 +126,11 @@ fn test_metrics_success_and_error_rates() {
             duration: Duration::from_millis(50),
             status_code: if i < 7 { Some(200) } else { Some(500) },
             success: i < 7,
-            error: if i < 7 { None } else { Some("Server error".to_string()) },
+            error: if i < 7 {
+                None
+            } else {
+                Some("Server error".to_string())
+            },
             target_id: "test".to_string(),
         };
         metrics.record(result);
@@ -172,7 +186,11 @@ fn test_multi_target_metrics() {
             duration: Duration::from_millis(50),
             status_code: if *success { Some(200) } else { Some(500) },
             success: *success,
-            error: if *success { None } else { Some("Error".to_string()) },
+            error: if *success {
+                None
+            } else {
+                Some("Error".to_string())
+            },
             target_id: target_id.to_string(),
         };
         metrics.record(result);
@@ -236,7 +254,11 @@ fn test_status_code_distribution() {
             duration: Duration::from_millis(50),
             status_code: Some(status),
             success: status < 400,
-            error: if status < 400 { None } else { Some(format!("HTTP {}", status)) },
+            error: if status < 400 {
+                None
+            } else {
+                Some(format!("HTTP {}", status))
+            },
             target_id: "test".to_string(),
         };
         metrics.record(result);

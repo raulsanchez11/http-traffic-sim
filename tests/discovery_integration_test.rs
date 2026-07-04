@@ -50,7 +50,10 @@ fn test_extract_host_from_url() {
     let test_cases = vec![
         ("https://example.com/path", "example.com"),
         ("http://api.example.com:8080/", "api.example.com"),
-        ("https://subdomain.example.com/api/v1", "subdomain.example.com"),
+        (
+            "https://subdomain.example.com/api/v1",
+            "subdomain.example.com",
+        ),
         ("http://192.168.1.100:3000", "192.168.1.100"),
         ("https://[::1]:8080/test", "[::1]"), // IPv6 includes brackets
     ];
@@ -64,12 +67,7 @@ fn test_extract_host_from_url() {
 
 #[test]
 fn test_extract_host_from_invalid_url() {
-    let invalid_urls = vec![
-        "not-a-url",
-        "://missing-scheme",
-        "http://",
-        "",
-    ];
+    let invalid_urls = vec!["not-a-url", "://missing-scheme", "http://", ""];
 
     for url in invalid_urls {
         let result = extract_host_from_url(url);
@@ -139,7 +137,10 @@ fn test_discovery_config_custom() {
     let config = PortDiscoveryConfig {
         enabled: true,
         mode: DiscoveryMode::Both,
-        ports: PortSpec::Range { start: 8000, end: 9000 },
+        ports: PortSpec::Range {
+            start: 8000,
+            end: 9000,
+        },
         timeout_ms: 5000,
         retries: 3,
         on_failure: FailureAction::Skip,
@@ -201,12 +202,10 @@ fn test_discovery_result_structure() {
         },
     ];
 
-    let failed_ports = vec![
-        PortFailure {
-            port: 8080,
-            error: "Connection timeout".to_string(),
-        },
-    ];
+    let failed_ports = vec![PortFailure {
+        port: 8080,
+        error: "Connection timeout".to_string(),
+    }];
 
     let result = DiscoveryResult {
         target_id: "test-target".to_string(),
@@ -226,7 +225,10 @@ fn test_discovery_result_structure() {
 #[test]
 fn test_port_spec_range_edge_cases() {
     // Single port range
-    let spec = PortSpec::Range { start: 8080, end: 8080 };
+    let spec = PortSpec::Range {
+        start: 8080,
+        end: 8080,
+    };
     let ports = spec.to_vec().unwrap();
     assert_eq!(ports.len(), 1);
     assert_eq!(ports[0], 8080);
@@ -292,5 +294,4 @@ fn test_discovery_config_serialization_structure() {
     };
 
     // If this compiles and runs, the structure is valid
-    assert!(true);
 }

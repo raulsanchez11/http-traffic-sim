@@ -45,9 +45,7 @@ fn bench_port_spec_range_large(c: &mut Criterion) {
 
 fn bench_extract_host(c: &mut Criterion) {
     c.bench_function("extract_host", |b| {
-        b.iter(|| {
-            extract_host_from_url(black_box("https://api.example.com:8443/health"))
-        })
+        b.iter(|| extract_host_from_url(black_box("https://api.example.com:8443/health")))
     });
 }
 

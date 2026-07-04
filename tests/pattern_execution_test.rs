@@ -11,7 +11,11 @@ fn test_fixed_pattern_creation() {
     };
 
     match pattern {
-        TrafficPattern::Fixed { concurrent, duration_secs, total_requests } => {
+        TrafficPattern::Fixed {
+            concurrent,
+            duration_secs,
+            total_requests,
+        } => {
             assert_eq!(concurrent, 50);
             assert_eq!(duration_secs, Some(60));
             assert_eq!(total_requests, None);
@@ -29,7 +33,11 @@ fn test_fixed_pattern_with_request_limit() {
     };
 
     match pattern {
-        TrafficPattern::Fixed { concurrent, duration_secs, total_requests } => {
+        TrafficPattern::Fixed {
+            concurrent,
+            duration_secs,
+            total_requests,
+        } => {
             assert_eq!(concurrent, 10);
             assert_eq!(duration_secs, None);
             assert_eq!(total_requests, Some(1000));
@@ -47,7 +55,11 @@ fn test_fixed_pattern_with_both_limits() {
     };
 
     match pattern {
-        TrafficPattern::Fixed { concurrent, duration_secs, total_requests } => {
+        TrafficPattern::Fixed {
+            concurrent,
+            duration_secs,
+            total_requests,
+        } => {
             assert_eq!(concurrent, 25);
             assert_eq!(duration_secs, Some(30));
             assert_eq!(total_requests, Some(500));
@@ -65,7 +77,11 @@ fn test_rate_limit_pattern_creation() {
     };
 
     match pattern {
-        TrafficPattern::RateLimit { rate, duration_secs, total_requests } => {
+        TrafficPattern::RateLimit {
+            rate,
+            duration_secs,
+            total_requests,
+        } => {
             assert_eq!(rate, 100);
             assert_eq!(duration_secs, Some(60));
             assert_eq!(total_requests, None);
@@ -83,7 +99,11 @@ fn test_rate_limit_pattern_with_request_limit() {
     };
 
     match pattern {
-        TrafficPattern::RateLimit { rate, duration_secs, total_requests } => {
+        TrafficPattern::RateLimit {
+            rate,
+            duration_secs,
+            total_requests,
+        } => {
             assert_eq!(rate, 50);
             assert_eq!(duration_secs, None);
             assert_eq!(total_requests, Some(2000));
@@ -102,7 +122,12 @@ fn test_ramp_pattern_creation() {
     };
 
     match pattern {
-        TrafficPattern::Ramp { from, to, ramp_duration_secs, hold_duration_secs } => {
+        TrafficPattern::Ramp {
+            from,
+            to,
+            ramp_duration_secs,
+            hold_duration_secs,
+        } => {
             assert_eq!(from, 10);
             assert_eq!(to, 100);
             assert_eq!(ramp_duration_secs, 60);
@@ -122,7 +147,12 @@ fn test_ramp_pattern_without_hold() {
     };
 
     match pattern {
-        TrafficPattern::Ramp { from, to, ramp_duration_secs, hold_duration_secs } => {
+        TrafficPattern::Ramp {
+            from,
+            to,
+            ramp_duration_secs,
+            hold_duration_secs,
+        } => {
             assert_eq!(from, 5);
             assert_eq!(to, 50);
             assert_eq!(ramp_duration_secs, 120);
@@ -159,7 +189,12 @@ fn test_burst_pattern_creation() {
     };
 
     match pattern {
-        TrafficPattern::Burst { size, interval_secs, duration_secs, total_bursts } => {
+        TrafficPattern::Burst {
+            size,
+            interval_secs,
+            duration_secs,
+            total_bursts,
+        } => {
             assert_eq!(size, 100);
             assert_eq!(interval_secs, 5);
             assert_eq!(duration_secs, Some(60));
@@ -179,7 +214,12 @@ fn test_burst_pattern_with_burst_limit() {
     };
 
     match pattern {
-        TrafficPattern::Burst { size, interval_secs, duration_secs, total_bursts } => {
+        TrafficPattern::Burst {
+            size,
+            interval_secs,
+            duration_secs,
+            total_bursts,
+        } => {
             assert_eq!(size, 50);
             assert_eq!(interval_secs, 10);
             assert_eq!(duration_secs, None);
@@ -193,13 +233,17 @@ fn test_burst_pattern_with_burst_limit() {
 fn test_burst_pattern_high_frequency() {
     let pattern = TrafficPattern::Burst {
         size: 1000,
-        interval_secs: 1,  // Every second
+        interval_secs: 1, // Every second
         duration_secs: Some(300),
         total_bursts: None,
     };
 
     match pattern {
-        TrafficPattern::Burst { size, interval_secs, .. } => {
+        TrafficPattern::Burst {
+            size,
+            interval_secs,
+            ..
+        } => {
             assert_eq!(size, 1000);
             assert_eq!(interval_secs, 1);
         }
@@ -220,7 +264,7 @@ fn test_pattern_cloning() {
     match (&pattern, &cloned) {
         (
             TrafficPattern::Fixed { concurrent: c1, .. },
-            TrafficPattern::Fixed { concurrent: c2, .. }
+            TrafficPattern::Fixed { concurrent: c2, .. },
         ) => {
             assert_eq!(c1, c2);
         }
@@ -294,7 +338,9 @@ fn test_ramp_various_durations() {
         };
 
         match pattern {
-            TrafficPattern::Ramp { ramp_duration_secs, .. } => {
+            TrafficPattern::Ramp {
+                ramp_duration_secs, ..
+            } => {
                 assert_eq!(ramp_duration_secs, duration);
             }
             _ => panic!("Expected Ramp pattern"),
@@ -361,7 +407,7 @@ fn test_short_duration_patterns() {
     // Test patterns with very short durations (useful for testing)
     let pattern = TrafficPattern::Fixed {
         concurrent: 10,
-        duration_secs: Some(1),  // 1 second
+        duration_secs: Some(1), // 1 second
         total_requests: None,
     };
 
@@ -378,7 +424,7 @@ fn test_long_duration_patterns() {
     // Test patterns with long durations (stress tests)
     let pattern = TrafficPattern::Fixed {
         concurrent: 50,
-        duration_secs: Some(3600),  // 1 hour
+        duration_secs: Some(3600), // 1 hour
         total_requests: None,
     };
 
@@ -410,11 +456,15 @@ fn test_ramp_up_vs_ramp_down() {
 
     match (&ramp_up, &ramp_down) {
         (
-            TrafficPattern::Ramp { from: f1, to: t1, .. },
-            TrafficPattern::Ramp { from: f2, to: t2, .. }
+            TrafficPattern::Ramp {
+                from: f1, to: t1, ..
+            },
+            TrafficPattern::Ramp {
+                from: f2, to: t2, ..
+            },
         ) => {
-            assert!(f1 < t1);  // Ramp up
-            assert!(f2 > t2);  // Ramp down
+            assert!(f1 < t1); // Ramp up
+            assert!(f2 > t2); // Ramp down
         }
         _ => panic!("Expected Ramp patterns"),
     }
